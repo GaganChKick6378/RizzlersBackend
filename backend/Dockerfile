@@ -1,25 +1,34 @@
-FROM eclipse-temurin:17-jdk-alpine as build
-WORKDIR /workspace/app
+# Build stage
+FROM maven:3.8.6-openjdk-17-slim AS build
+WORKDIR /app
 
-COPY mvnw .
-COPY .mvn .mvn
+# Copy the project files
 COPY pom.xml .
-COPY src src
+COPY src ./src
 
-RUN ./mvnw install -DskipTests
-RUN mkdir -p target/dependency && (cd target/dependency; jar -xf ../*.jar)
+# Build the application
+RUN mvn clean package -DskipTests
 
+# Runtime stage
 FROM eclipse-temurin:17-jre-alpine
-VOLUME /tmp
-ARG DEPENDENCY=/workspace/app/target/dependency
-COPY --from=build ${DEPENDENCY}/BOOT-INF/lib /app/lib
-COPY --from=build ${DEPENDENCY}/META-INF /app/META-INF
-COPY --from=build ${DEPENDENCY}/BOOT-INF/classes /app
-ENTRYPOINT ["java","-cp","app:app/lib/*","com.kdu.rizzlers.RizzlersApplication"]
+WORKDIR /app
+
+# Add a non-root user to run the application
+RUN addgroup -S spring && adduser -S spring -G spring
+USER spring:spring
+
+# Copy the JAR file from the build stage
+COPY --from=build /app/target/*.jar app.jar
+
+# Set environment variables
+ENV SPRING_PROFILES_ACTIVE=prod
+
+# Expose the application port
+EXPOSE 8080
+
+# Run the application
+ENTRYPOINT ["java", "-jar", "app.jar"]
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD wget -q --spider http://localhost:8080/api/health || exit 1
-
-# Expose the port
-EXPOSE 8080 
+  CMD wget -q --spider http://localhost:8080/api/health || exit 1 

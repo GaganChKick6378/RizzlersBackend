@@ -80,6 +80,7 @@ module "api_gateway" {
   project_name = var.project_name
   environment  = var.environment
   load_balancer_dns = module.alb.alb_dns_name
+  load_balancer_listener_arn = module.alb.http_listener_arn
   vpc_id       = data.aws_vpc.kdu_vpc.id
   vpc_link_subnets = local.private_subnet_ids
   tags         = var.tags

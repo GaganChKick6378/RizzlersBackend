@@ -13,6 +13,11 @@ variable "load_balancer_dns" {
   type        = string
 }
 
+variable "load_balancer_listener_arn" {
+  description = "ARN of the load balancer listener"
+  type        = string
+}
+
 variable "vpc_id" {
   description = "VPC ID"
   type        = string
