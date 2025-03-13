@@ -1,5 +1,5 @@
 resource "aws_security_group" "alb_sg" {
-  name        = "${var.environment}-alb-sg"
+  name        = "${var.name_prefix}-alb-sg"
   description = "Security group for ALB"
   vpc_id      = var.vpc_id
   
@@ -33,10 +33,14 @@ resource "aws_security_group" "alb_sg" {
       Name = "Rizzlers-ALB-SG-${var.environment}"
     }
   )
+  
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_security_group" "ecs_sg" {
-  name        = "${var.environment}-ecs-sg"
+  name        = "${var.name_prefix}-ecs-sg"
   description = "Security group for ECS tasks"
   vpc_id      = var.vpc_id
   
@@ -62,4 +66,8 @@ resource "aws_security_group" "ecs_sg" {
       Name = "Rizzlers-ECS-SG-${var.environment}"
     }
   )
+  
+  lifecycle {
+    create_before_destroy = true
+  }
 } 

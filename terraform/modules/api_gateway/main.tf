@@ -1,5 +1,5 @@
 resource "aws_apigatewayv2_api" "api" {
-  name          = "${var.project_name}-${var.environment}-api"
+  name          = "${var.name_prefix}-api"
   protocol_type = "HTTP"
   
   cors_configuration {
@@ -20,7 +20,7 @@ resource "aws_apigatewayv2_api" "api" {
 
 # VPC Link for private integration
 resource "aws_apigatewayv2_vpc_link" "link" {
-  name               = "${var.project_name}-${var.environment}-vpce-link"
+  name               = "${var.name_prefix}-vpce-link"
   security_group_ids = [aws_security_group.vpce_sg.id]
   subnet_ids         = var.vpc_link_subnets
   
@@ -34,7 +34,7 @@ resource "aws_apigatewayv2_vpc_link" "link" {
 
 # Security group for VPC Link
 resource "aws_security_group" "vpce_sg" {
-  name        = "${var.project_name}-${var.environment}-vpce-sg"
+  name        = "${var.name_prefix}-vpce-sg"
   description = "Security group for API Gateway VPC Link"
   vpc_id      = var.vpc_id
   
@@ -60,7 +60,7 @@ resource "aws_apigatewayv2_integration" "alb_integration" {
   api_id           = aws_apigatewayv2_api.api.id
   integration_type = "HTTP_PROXY"
   
-  integration_uri    = "https://${var.load_balancer_dns}"
+  integration_uri    = "http://${var.load_balancer_dns}"
   integration_method = "ANY"
   connection_type    = "VPC_LINK"
   connection_id      = aws_apigatewayv2_vpc_link.link.id
@@ -162,7 +162,7 @@ resource "aws_apigatewayv2_stage" "qa" {
 
 # CloudWatch Log Group for API Gateway
 resource "aws_cloudwatch_log_group" "api_logs" {
-  name              = "/aws/apigateway/${var.project_name}-${var.environment}-api"
+  name              = "/aws/apigateway/${var.name_prefix}-api"
   retention_in_days = 30
   
   tags = merge(
@@ -173,35 +173,26 @@ resource "aws_cloudwatch_log_group" "api_logs" {
   )
 }
 
-# Usage plan with throttling
-resource "aws_api_gateway_usage_plan" "usage_plan" {
-  name        = "${var.project_name}-${var.environment}-usage-plan"
-  description = "Usage plan with throttling"
-  
-  api_stages {
-    api_id = aws_apigatewayv2_api.api.id
-    stage  = aws_apigatewayv2_stage.dev.name
-  }
-  
-  api_stages {
-    api_id = aws_apigatewayv2_api.api.id
-    stage  = aws_apigatewayv2_stage.qa.name
-  }
-  
-  quota_settings {
-    limit  = 100000
-    period = "MONTH"
-  }
-  
-  throttle_settings {
-    burst_limit = 100
-    rate_limit  = 50
-  }
-  
-  tags = merge(
-    var.tags,
-    {
-      Name = "Rizzlers-ApiGateway-UsagePlan-${var.environment}"
-    }
-  )
-} 
+# Note: Usage plans are not supported for HTTP APIs
+# The commented code below would be used for REST APIs instead
+# resource "aws_api_gateway_usage_plan" "usage_plan" {
+#   name        = "${var.name_prefix}-usage-plan"
+#   description = "Usage plan with throttling"
+#   
+#   quota_settings {
+#     limit  = 100000
+#     period = "MONTH"
+#   }
+#   
+#   throttle_settings {
+#     burst_limit = 100
+#     rate_limit  = 50
+#   }
+#   
+#   tags = merge(
+#     var.tags,
+#     {
+#       Name = "Rizzlers-ApiGateway-UsagePlan-${var.environment}"
+#     }
+#   )
+# } 

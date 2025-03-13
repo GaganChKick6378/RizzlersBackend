@@ -14,6 +14,11 @@ env:
   ECS_CLUSTER: rizzlers-dev-cluster
   ECS_SERVICE: rizzlers-dev-service
   TERRAFORM_DIR: terraform
+  TF_VAR_environment: dev
+  TF_VAR_vpc_name: KDU-25-VPC
+  TF_VAR_availability_zones: '["ap-south-1a", "ap-south-1b", "ap-south-1c"]'
+  TF_VAR_use_existing_resources: "true"
+  TF_VAR_resource_name_prefix: "rizzlers-tf-dev"
 
 jobs:
   terraform:

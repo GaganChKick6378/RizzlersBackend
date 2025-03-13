@@ -1,5 +1,5 @@
 resource "aws_ecs_cluster" "app_cluster" {
-  name = "${var.project_name}-${var.environment}-cluster"
+  name = "${var.name_prefix}-cluster"
   
   setting {
     name  = "containerInsights"
@@ -16,7 +16,7 @@ resource "aws_ecs_cluster" "app_cluster" {
 
 # CloudWatch Log Group for ECS
 resource "aws_cloudwatch_log_group" "ecs_logs" {
-  name              = "/ecs/${var.project_name}-${var.environment}"
+  name              = "/ecs/${var.name_prefix}"
   retention_in_days = 30
   
   tags = merge(
@@ -29,7 +29,7 @@ resource "aws_cloudwatch_log_group" "ecs_logs" {
 
 # Task Execution Role
 resource "aws_iam_role" "ecs_task_execution_role" {
-  name = "${var.project_name}-${var.environment}-task-execution-role"
+  name = "${var.name_prefix}-task-execution-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -59,7 +59,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" {
 
 # Task Role
 resource "aws_iam_role" "ecs_task_role" {
-  name = "${var.project_name}-${var.environment}-task-role"
+  name = "${var.name_prefix}-task-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -84,7 +84,7 @@ resource "aws_iam_role" "ecs_task_role" {
 
 # Task Definition
 resource "aws_ecs_task_definition" "app_task" {
-  family                   = "${var.project_name}-${var.environment}-task"
+  family                   = "${var.name_prefix}-task"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   cpu                      = "256"
@@ -94,7 +94,7 @@ resource "aws_ecs_task_definition" "app_task" {
 
   container_definitions = jsonencode([
     {
-      name      = "${var.project_name}-${var.environment}-container"
+      name      = "${var.name_prefix}-container"
       image     = "${var.ecr_repository}:latest"
       essential = true
       
@@ -154,7 +154,7 @@ resource "aws_ecs_task_definition" "app_task" {
 
 # ECS Service
 resource "aws_ecs_service" "app_service" {
-  name             = "${var.project_name}-${var.environment}-service"
+  name             = "${var.name_prefix}-service"
   cluster          = aws_ecs_cluster.app_cluster.id
   task_definition  = aws_ecs_task_definition.app_task.arn
   launch_type      = "FARGATE"
@@ -174,7 +174,7 @@ resource "aws_ecs_service" "app_service" {
   
   load_balancer {
     target_group_arn = aws_lb_target_group.app_tg.arn
-    container_name   = "${var.project_name}-${var.environment}-container"
+    container_name   = "${var.name_prefix}-container"
     container_port   = var.container_port
   }
   
@@ -204,7 +204,7 @@ resource "aws_appautoscaling_target" "ecs_target" {
 }
 
 resource "aws_appautoscaling_policy" "ecs_policy_cpu" {
-  name               = "${var.project_name}-${var.environment}-cpu-autoscaling"
+  name               = "${var.name_prefix}-cpu-autoscaling"
   policy_type        = "TargetTrackingScaling"
   resource_id        = aws_appautoscaling_target.ecs_target.resource_id
   scalable_dimension = aws_appautoscaling_target.ecs_target.scalable_dimension
@@ -221,7 +221,7 @@ resource "aws_appautoscaling_policy" "ecs_policy_cpu" {
 }
 
 resource "aws_appautoscaling_policy" "ecs_policy_memory" {
-  name               = "${var.project_name}-${var.environment}-memory-autoscaling"
+  name               = "${var.name_prefix}-memory-autoscaling"
   policy_type        = "TargetTrackingScaling"
   resource_id        = aws_appautoscaling_target.ecs_target.resource_id
   scalable_dimension = aws_appautoscaling_target.ecs_target.scalable_dimension
@@ -239,7 +239,7 @@ resource "aws_appautoscaling_policy" "ecs_policy_memory" {
 
 # Target Group for ALB
 resource "aws_lb_target_group" "app_tg" {
-  name        = "${var.project_name}-${var.environment}-tg"
+  name        = "${var.name_prefix}-ecs-tg"
   port        = var.container_port
   protocol    = "HTTP"
   vpc_id      = var.vpc_id

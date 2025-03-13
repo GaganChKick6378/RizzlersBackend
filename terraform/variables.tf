@@ -47,6 +47,30 @@ variable "database_password" {
   sensitive   = true
 }
 
+variable "vpc_name" {
+  description = "Name of the VPC to use"
+  type        = string
+  default     = "KDU-25-VPC"
+}
+
+variable "availability_zones" {
+  description = "List of availability zones to use"
+  type        = list(string)
+  default     = ["ap-south-1a", "ap-south-1b", "ap-south-1c"]
+}
+
+variable "use_existing_resources" {
+  description = "Whether to use existing resources or create new ones"
+  type        = bool
+  default     = false
+}
+
+variable "resource_name_prefix" {
+  description = "Prefix to use for resource names to avoid conflicts"
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Common tags to apply to all resources"
   type        = map(string)

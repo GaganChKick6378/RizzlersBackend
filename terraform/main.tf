@@ -12,37 +12,53 @@ provider "aws" {
 data "aws_vpc" "kdu_vpc" {
   filter {
     name   = "tag:Name"
-    values = ["KDU-25-VPC"]
+    values = [var.vpc_name]
   }
 }
 
-# Get public and private subnets
-data "aws_subnets" "public" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.kdu_vpc.id]
-  }
+# Get availability zones
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+# Get public subnets
+data "aws_subnet_ids" "public" {
+  vpc_id = data.aws_vpc.kdu_vpc.id
   filter {
     name   = "tag:Type"
     values = ["Public"]
   }
 }
 
-data "aws_subnets" "private" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.kdu_vpc.id]
-  }
+data "aws_subnet" "public_subnets" {
+  for_each = data.aws_subnet_ids.public.ids
+  id       = each.value
+}
+
+# Get private subnets
+data "aws_subnet_ids" "private" {
+  vpc_id = data.aws_vpc.kdu_vpc.id
   filter {
     name   = "tag:Type"
     values = ["Private"]
   }
 }
 
+data "aws_subnet" "private_subnets" {
+  for_each = data.aws_subnet_ids.private.ids
+  id       = each.value
+}
+
+locals {
+  public_subnet_ids  = [for s in data.aws_subnet.public_subnets : s.id]
+  private_subnet_ids = [for s in data.aws_subnet.private_subnets : s.id]
+  resource_name_prefix = var.resource_name_prefix != "" ? var.resource_name_prefix : "${var.project_name}-${var.environment}"
+}
+
 # ECR Repository for container images
 module "ecr" {
   source = "./modules/ecr"
-  name   = "${var.project_name}-${var.environment}"
+  name   = local.resource_name_prefix
   tags   = var.tags
 }
 
@@ -51,6 +67,7 @@ module "security_groups" {
   source      = "./modules/security"
   vpc_id      = data.aws_vpc.kdu_vpc.id
   environment = var.environment
+  name_prefix = local.resource_name_prefix
   tags        = var.tags
 }
 
@@ -60,7 +77,7 @@ module "ecs" {
   project_name    = var.project_name
   environment     = var.environment
   vpc_id          = data.aws_vpc.kdu_vpc.id
-  subnets         = data.aws_subnets.private.ids
+  subnets         = local.private_subnet_ids
   security_group  = module.security_groups.ecs_sg_id
   ecr_repository  = module.ecr.repository_url
   container_port  = var.container_port
@@ -69,6 +86,7 @@ module "ecs" {
   database_url    = var.database_url
   database_username = var.database_username
   database_password = var.database_password
+  name_prefix     = local.resource_name_prefix
 }
 
 # Application Load Balancer
@@ -77,10 +95,11 @@ module "alb" {
   project_name  = var.project_name
   environment   = var.environment
   vpc_id        = data.aws_vpc.kdu_vpc.id
-  subnets       = data.aws_subnets.public.ids
+  subnets       = local.public_subnet_ids
   security_group = module.security_groups.alb_sg_id
   health_check_path = var.health_check_path
   tags          = var.tags
+  name_prefix   = local.resource_name_prefix
 }
 
 # API Gateway
@@ -90,8 +109,9 @@ module "api_gateway" {
   environment  = var.environment
   load_balancer_dns = module.alb.alb_dns_name
   vpc_id       = data.aws_vpc.kdu_vpc.id
-  vpc_link_subnets = data.aws_subnets.private.ids
+  vpc_link_subnets = local.private_subnet_ids
   tags         = var.tags
+  name_prefix  = local.resource_name_prefix
 }
 
 # CloudWatch Logs
@@ -100,4 +120,5 @@ module "cloudwatch" {
   project_name = var.project_name
   environment  = var.environment
   tags         = var.tags
+  name_prefix  = local.resource_name_prefix
 } 
