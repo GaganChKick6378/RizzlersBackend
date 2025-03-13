@@ -79,4 +79,18 @@ variable "tags" {
     Creator = "RizzlersTeam"
     Purpose = "IBE"
   }
+}
+
+variable "public_subnet_ids" {
+  description = "List of public subnet IDs in ap-south-1a, ap-south-1b, and ap-south-1c"
+  type        = list(string)
+  # These should be replaced with actual subnet IDs during deployment
+  default     = []
+}
+
+variable "private_subnet_ids" {
+  description = "List of private subnet IDs in ap-south-1a, ap-south-1b, and ap-south-1c"
+  type        = list(string)
+  # These should be replaced with actual subnet IDs during deployment
+  default     = []
 } 

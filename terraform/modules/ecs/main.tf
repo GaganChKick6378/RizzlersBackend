@@ -173,7 +173,7 @@ resource "aws_ecs_service" "app_service" {
   }
   
   load_balancer {
-    target_group_arn = aws_lb_target_group.app_tg.arn
+    target_group_arn = var.target_group_arn
     container_name   = "${var.name_prefix}-container"
     container_port   = var.container_port
   }
@@ -192,6 +192,9 @@ resource "aws_ecs_service" "app_service" {
   lifecycle {
     ignore_changes = [desired_count]
   }
+  
+  # Ensure that the service waits for the ALB to be ready
+  depends_on = [var.load_balancer_listener_arn]
 }
 
 # Auto Scaling
@@ -234,35 +237,5 @@ resource "aws_appautoscaling_policy" "ecs_policy_memory" {
     target_value       = 70
     scale_in_cooldown  = 300
     scale_out_cooldown = 300
-  }
-}
-
-# Target Group for ALB
-resource "aws_lb_target_group" "app_tg" {
-  name        = "${var.name_prefix}-ecs-tg"
-  port        = var.container_port
-  protocol    = "HTTP"
-  vpc_id      = var.vpc_id
-  target_type = "ip"
-  
-  health_check {
-    path                = var.health_check_path
-    port                = "traffic-port"
-    healthy_threshold   = 3
-    unhealthy_threshold = 3
-    timeout             = 5
-    interval            = 30
-    matcher             = "200-299"
-  }
-  
-  tags = merge(
-    var.tags,
-    {
-      Name = "Rizzlers-ECS-TargetGroup-${var.environment}"
-    }
-  )
-  
-  lifecycle {
-    create_before_destroy = true
   }
 } 

@@ -62,4 +62,14 @@ variable "database_username" {
 variable "database_password" {
   description = "Database password"
   type        = string
+}
+
+variable "target_group_arn" {
+  description = "ARN of the target group to register tasks with"
+  type        = string
+}
+
+variable "load_balancer_listener_arn" {
+  description = "ARN of the load balancer listener"
+  type        = string
 } 

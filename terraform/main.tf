@@ -16,38 +16,12 @@ data "aws_vpc" "kdu_vpc" {
   }
 }
 
-# Get availability zones
-data "aws_availability_zones" "available" {
-  state = "available"
-}
-
-# Get public subnets
-data "aws_subnets" "public" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.kdu_vpc.id]
-  }
-  filter {
-    name   = "tag:Type"
-    values = ["Public"]
-  }
-}
-
-# Get private subnets
-data "aws_subnets" "private" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.kdu_vpc.id]
-  }
-  filter {
-    name   = "tag:Type"
-    values = ["Private"]
-  }
-}
-
+# Use hardcoded subnets instead of dynamic discovery
 locals {
-  public_subnet_ids  = data.aws_subnets.public.ids
-  private_subnet_ids = data.aws_subnets.private.ids
+  # These are placeholder values - you'll need to replace these with the actual subnet IDs from your VPC
+  # Make sure to include at least one subnet in each of ap-south-1a, ap-south-1b, and ap-south-1c
+  public_subnet_ids = var.public_subnet_ids
+  private_subnet_ids = var.private_subnet_ids
   resource_name_prefix = var.resource_name_prefix != "" ? var.resource_name_prefix : "${var.project_name}-${var.environment}"
 }
 
@@ -83,6 +57,8 @@ module "ecs" {
   database_username = var.database_username
   database_password = var.database_password
   name_prefix     = local.resource_name_prefix
+  target_group_arn = module.alb.target_group_arn
+  load_balancer_listener_arn = module.alb.http_listener_arn
 }
 
 # Application Load Balancer
