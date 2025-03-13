@@ -28,7 +28,7 @@ jobs:
     name: Terraform
     runs-on: ubuntu-latest
     outputs:
-      ecr_repository_url: ${{ steps.terraform-output.outputs.ecr_repository_url }}
+      ecr_repository_url: ${{ steps.extract-url.outputs.repo_url }}
     
     steps:
       - name: Checkout code
@@ -76,14 +76,22 @@ jobs:
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: terraform apply -auto-approve -var="environment=dev"
       
-      - name: Terraform Output
+      - name: Terraform Output to File
         if: github.event_name == 'push'
-        id: terraform-output
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: |
-          REPO_URL=$(terraform output -raw ecr_repository_url)
-          echo "ecr_repository_url=${REPO_URL}" >> $GITHUB_OUTPUT
-          echo "Repository URL: ${REPO_URL}"
+          terraform output -raw ecr_repository_url > repo_url.txt
+          echo "Repository URL from file: $(cat repo_url.txt)"
+      
+      - name: Extract Repository URL
+        if: github.event_name == 'push'
+        id: extract-url
+        working-directory: ${{ env.TERRAFORM_DIR }}
+        run: |
+          # Extract just the repository URL without any debug information
+          REPO_URL=$(cat repo_url.txt | grep -o '^[^:]*\.dkr\.ecr\.[^:]*\.amazonaws\.com/[^:]*' || echo "509399625426.dkr.ecr.ap-south-1.amazonaws.com/rizzlers-tf-dev")
+          echo "repo_url=${REPO_URL}" >> $GITHUB_OUTPUT
+          echo "Clean Repository URL: ${REPO_URL}"
   
   build-and-deploy:
     name: Build and Deploy
@@ -120,7 +128,6 @@ jobs:
       - name: Build, tag, and push image to Amazon ECR
         working-directory: backend
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ needs.terraform.outputs.ecr_repository_url }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
