@@ -267,8 +267,8 @@ EOF
             echo "New container image: $FULL_IMAGE_URI"
             
             # Update the task definition with improved configuration
-            TASK_DEF_JSON=$(echo "$TASK_DEF" | jq --arg image "$FULL_IMAGE_URI" --arg name "$CONTAINER_NAME" \
-              '.containerDefinitions = [.containerDefinitions[] | 
+            TASK_DEF_JSON=$(echo "$TASK_DEF" | jq --arg image "$FULL_IMAGE_URI" --arg name "$CONTAINER_NAME" '
+              .containerDefinitions = [.containerDefinitions[] | 
                 if .name == $name then 
                   .image = $image | 
                   .logConfiguration = {
@@ -295,7 +295,8 @@ EOF
                     {"name": "SPRING_DATASOURCE_PASSWORD", "value": "Password10"}
                   ]
                 else . end
-              ] | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+              ] | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
+            ')
             
             echo "New task definition: $TASK_DEF_JSON"
             
