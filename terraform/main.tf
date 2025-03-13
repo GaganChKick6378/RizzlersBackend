@@ -22,36 +22,32 @@ data "aws_availability_zones" "available" {
 }
 
 # Get public subnets
-data "aws_subnet_ids" "public" {
-  vpc_id = data.aws_vpc.kdu_vpc.id
+data "aws_subnets" "public" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.kdu_vpc.id]
+  }
   filter {
     name   = "tag:Type"
     values = ["Public"]
   }
 }
 
-data "aws_subnet" "public_subnets" {
-  for_each = data.aws_subnet_ids.public.ids
-  id       = each.value
-}
-
 # Get private subnets
-data "aws_subnet_ids" "private" {
-  vpc_id = data.aws_vpc.kdu_vpc.id
+data "aws_subnets" "private" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.kdu_vpc.id]
+  }
   filter {
     name   = "tag:Type"
     values = ["Private"]
   }
 }
 
-data "aws_subnet" "private_subnets" {
-  for_each = data.aws_subnet_ids.private.ids
-  id       = each.value
-}
-
 locals {
-  public_subnet_ids  = [for s in data.aws_subnet.public_subnets : s.id]
-  private_subnet_ids = [for s in data.aws_subnet.private_subnets : s.id]
+  public_subnet_ids  = data.aws_subnets.public.ids
+  private_subnet_ids = data.aws_subnets.private.ids
   resource_name_prefix = var.resource_name_prefix != "" ? var.resource_name_prefix : "${var.project_name}-${var.environment}"
 }
 
