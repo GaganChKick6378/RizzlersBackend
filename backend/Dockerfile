@@ -21,14 +21,16 @@ USER spring:spring
 COPY --from=build /app/target/*.jar app.jar
 
 # Set environment variables
-ENV SPRING_PROFILES_ACTIVE=prod
+ENV SPRING_PROFILES_ACTIVE=dev
+ENV JAVA_OPTS="-Xms256m -Xmx512m -XX:+UseG1GC"
 
 # Expose the application port
 EXPOSE 8080
 
-# Run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Run the application with better logging
+ENTRYPOINT ["sh", "-c", "echo 'Starting Spring Boot application...'; \
+  java ${JAVA_OPTS} -jar app.jar --spring.profiles.active=${SPRING_PROFILES_ACTIVE} 2>&1 | tee /tmp/app.log"]
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD wget -q --spider http://localhost:8080/api/health || exit 1 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD wget -q --spider http://localhost:8080/api/actuator/health || exit 1 

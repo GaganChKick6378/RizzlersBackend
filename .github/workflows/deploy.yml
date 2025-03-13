@@ -181,9 +181,82 @@ jobs:
           TASK_DEF=$(aws ecs describe-task-definition --task-definition ${{ env.ECS_TASK_DEFINITION }} --query 'taskDefinition' 2>/dev/null || echo '{}')
           
           if [ "$TASK_DEF" = "{}" ]; then
-            echo "Task definition not found, skipping update"
+            echo "Task definition not found, creating a new one..."
+            
+            # Create a new task definition with proper configuration
+            cat > task-definition.json << EOF
+{
+  "family": "${{ env.ECS_TASK_DEFINITION }}",
+  "executionRoleArn": "arn:aws:iam::509399625426:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::509399625426:role/ecsTaskExecutionRole",
+  "networkMode": "awsvpc",
+  "containerDefinitions": [
+    {
+      "name": "${{ env.ECS_TASK_DEFINITION }}-container",
+      "image": "$FULL_IMAGE_URI",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8080,
+          "hostPort": 8080,
+          "protocol": "tcp"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/${{ env.ECS_TASK_DEFINITION }}",
+          "awslogs-region": "${{ env.AWS_REGION }}",
+          "awslogs-stream-prefix": "ecs",
+          "awslogs-create-group": "true"
+        }
+      },
+      "environment": [
+        {
+          "name": "SPRING_PROFILES_ACTIVE",
+          "value": "dev"
+        },
+        {
+          "name": "SERVER_PORT",
+          "value": "8080"
+        },
+        {
+          "name": "SPRING_DATASOURCE_URL",
+          "value": "jdbc:postgresql://database-kdu.czpwqpnfk9dp.ap-south-1.rds.amazonaws.com:5432/Database_10_dev"
+        },
+        {
+          "name": "SPRING_DATASOURCE_USERNAME",
+          "value": "Team_10"
+        },
+        {
+          "name": "SPRING_DATASOURCE_PASSWORD",
+          "value": "Password10"
+        }
+      ],
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "wget -q --spider http://localhost:8080/actuator/health || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    }
+  ],
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "512",
+  "memory": "1024"
+}
+EOF
+            aws ecs register-task-definition --cli-input-json file://task-definition.json
+            echo "Created new task definition"
+            
           else
-            echo "Found task definition ${{ env.ECS_TASK_DEFINITION }}, checking container image..."
+            echo "Found task definition ${{ env.ECS_TASK_DEFINITION }}, updating it..."
             
             # Extract container definition and image
             CONTAINER_NAME="${{ env.ECS_TASK_DEFINITION }}-container"
@@ -193,20 +266,42 @@ jobs:
             echo "Current container image: $CURRENT_IMAGE"
             echo "New container image: $FULL_IMAGE_URI"
             
-            if [ "$CURRENT_IMAGE" != "$FULL_IMAGE_URI" ]; then
-              echo "Updating task definition with new image..."
-              
-              # Create a new revision of the task definition with the updated image
-              TASK_DEF_JSON=$(echo "$TASK_DEF" | jq --arg image "$FULL_IMAGE_URI" --arg name "$CONTAINER_NAME" \
-                '.containerDefinitions = [.containerDefinitions[] | if .name == $name then .image = $image else . end] | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
-              
-              echo "New task definition: $TASK_DEF_JSON"
-              
-              # Register the new task definition
-              aws ecs register-task-definition --cli-input-json "$TASK_DEF_JSON"
-            else
-              echo "Image is already up to date, no need to update task definition"
-            fi
+            # Update the task definition with improved configuration
+            TASK_DEF_JSON=$(echo "$TASK_DEF" | jq --arg image "$FULL_IMAGE_URI" --arg name "$CONTAINER_NAME" \
+              '.containerDefinitions = [.containerDefinitions[] | 
+                if .name == $name then 
+                  .image = $image | 
+                  .logConfiguration = {
+                    "logDriver": "awslogs",
+                    "options": {
+                      "awslogs-group": "/ecs/${{ env.ECS_TASK_DEFINITION }}",
+                      "awslogs-region": "${{ env.AWS_REGION }}",
+                      "awslogs-stream-prefix": "ecs",
+                      "awslogs-create-group": "true"
+                    }
+                  } |
+                  .healthCheck = {
+                    "command": ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health || exit 1"],
+                    "interval": 30,
+                    "timeout": 5,
+                    "retries": 3,
+                    "startPeriod": 60
+                  } |
+                  .environment = [
+                    {"name": "SPRING_PROFILES_ACTIVE", "value": "dev"},
+                    {"name": "SERVER_PORT", "value": "8080"},
+                    {"name": "SPRING_DATASOURCE_URL", "value": "jdbc:postgresql://database-kdu.czpwqpnfk9dp.ap-south-1.rds.amazonaws.com:5432/Database_10_dev"},
+                    {"name": "SPRING_DATASOURCE_USERNAME", "value": "Team_10"},
+                    {"name": "SPRING_DATASOURCE_PASSWORD", "value": "Password10"}
+                  ]
+                else . end
+              ] | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+            
+            echo "New task definition: $TASK_DEF_JSON"
+            
+            # Register the new task definition
+            echo "$TASK_DEF_JSON" > updated-task-definition.json
+            aws ecs register-task-definition --cli-input-json file://updated-task-definition.json
           fi
       
       - name: Force new deployment
