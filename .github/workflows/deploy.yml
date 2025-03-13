@@ -123,7 +123,12 @@ jobs:
       
       - name: Build and test with Maven
         working-directory: backend
-        run: mvn clean package -DskipTests
+        run: |
+          # Try to generate Maven wrapper if necessary
+          mvn -N io.takari:maven:wrapper -Dmaven=3.9.5 || true
+          
+          # Build the project
+          mvn clean package -DskipTests
       
       - name: Build, tag, and push image to Amazon ECR
         working-directory: backend
