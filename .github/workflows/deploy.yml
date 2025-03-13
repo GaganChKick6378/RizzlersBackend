@@ -19,6 +19,9 @@ env:
   # Subnet IDs from KDU-25-VPC in ap-south-1
   TF_VAR_public_subnet_ids: '["subnet-0b6ce2e699142888b", "subnet-04648c3dd5600df55", "subnet-0600d671cd9103ccc"]'
   TF_VAR_private_subnet_ids: '["subnet-0b31fd91378b4e19c", "subnet-0799d7919a2b9f1e5", "subnet-0185b2ce809770610"]'
+  # Hardcoded ECS resource names based on resource_name_prefix pattern
+  ECS_CLUSTER: "rizzlers-tf-dev-cluster"
+  ECS_SERVICE: "rizzlers-tf-dev-service"
 
 jobs:
   terraform:
@@ -26,8 +29,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       ecr_repository_url: ${{ steps.extract-url.outputs.repo_url }}
-      ecs_cluster_name: ${{ steps.extract-outputs.outputs.cluster_name }}
-      ecs_service_name: ${{ steps.extract-outputs.outputs.service_name }}
     
     steps:
       - name: Checkout code
@@ -80,11 +81,7 @@ jobs:
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: |
           terraform output -raw ecr_repository_url > repo_url.txt
-          terraform output -raw ecs_cluster_name > cluster_name.txt
-          terraform output -raw ecs_service_name > service_name.txt
           echo "Repository URL from file: $(cat repo_url.txt)"
-          echo "ECS Cluster name: $(cat cluster_name.txt)"
-          echo "ECS Service name: $(cat service_name.txt)"
       
       - name: Extract Repository URL
         if: github.event_name == 'push'
@@ -95,21 +92,6 @@ jobs:
           REPO_URL=$(cat repo_url.txt | grep -o '^[^:]*\.dkr\.ecr\.[^:]*\.amazonaws\.com/[^:]*' || echo "509399625426.dkr.ecr.ap-south-1.amazonaws.com/rizzlers-tf-dev")
           echo "repo_url=${REPO_URL}" >> $GITHUB_OUTPUT
           echo "Clean Repository URL: ${REPO_URL}"
-      
-      - name: Extract Other Outputs
-        if: github.event_name == 'push'
-        id: extract-outputs
-        working-directory: ${{ env.TERRAFORM_DIR }}
-        run: |
-          # Extract just the cluster and service names without any debug information
-          CLUSTER_NAME=$(cat cluster_name.txt | grep -o '^[^:]*' || echo "rizzlers-tf-dev-cluster")
-          SERVICE_NAME=$(cat service_name.txt | grep -o '^[^:]*' || echo "rizzlers-tf-dev-service")
-          
-          echo "cluster_name=${CLUSTER_NAME}" >> $GITHUB_OUTPUT
-          echo "service_name=${SERVICE_NAME}" >> $GITHUB_OUTPUT
-          
-          echo "Clean ECS Cluster name: ${CLUSTER_NAME}"
-          echo "Clean ECS Service name: ${SERVICE_NAME}"
   
   build-and-deploy:
     name: Build and Deploy
@@ -161,16 +143,10 @@ jobs:
           docker push $ECR_REPOSITORY:latest
       
       - name: Force new deployment
-        env:
-          ECS_CLUSTER: ${{ needs.terraform.outputs.ecs_cluster_name }}
-          ECS_SERVICE: ${{ needs.terraform.outputs.ecs_service_name }}
         run: |
-          echo "Deploying to cluster: $ECS_CLUSTER, service: $ECS_SERVICE"
-          aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE --force-new-deployment
+          echo "Deploying to cluster: ${{ env.ECS_CLUSTER }}, service: ${{ env.ECS_SERVICE }}"
+          aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --force-new-deployment
       
       - name: Wait for service to stabilize
-        env:
-          ECS_CLUSTER: ${{ needs.terraform.outputs.ecs_cluster_name }}
-          ECS_SERVICE: ${{ needs.terraform.outputs.ecs_service_name }}
         run: |
-          aws ecs wait services-stable --cluster $ECS_CLUSTER --services $ECS_SERVICE 
+          aws ecs wait services-stable --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} 
