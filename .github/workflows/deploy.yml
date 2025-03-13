@@ -101,15 +101,15 @@ jobs:
         id: extract-outputs
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: |
-          # Use default names if not available
-          CLUSTER_NAME=$(cat cluster_name.txt 2>/dev/null || echo "rizzlers-tf-dev-cluster")
-          SERVICE_NAME=$(cat service_name.txt 2>/dev/null || echo "rizzlers-tf-dev-service")
+          # Extract just the cluster and service names without any debug information
+          CLUSTER_NAME=$(cat cluster_name.txt | grep -o '^[^:]*' || echo "rizzlers-tf-dev-cluster")
+          SERVICE_NAME=$(cat service_name.txt | grep -o '^[^:]*' || echo "rizzlers-tf-dev-service")
           
           echo "cluster_name=${CLUSTER_NAME}" >> $GITHUB_OUTPUT
           echo "service_name=${SERVICE_NAME}" >> $GITHUB_OUTPUT
           
-          echo "Using ECS Cluster: ${CLUSTER_NAME}"
-          echo "Using ECS Service: ${SERVICE_NAME}"
+          echo "Clean ECS Cluster name: ${CLUSTER_NAME}"
+          echo "Clean ECS Service name: ${SERVICE_NAME}"
   
   build-and-deploy:
     name: Build and Deploy
