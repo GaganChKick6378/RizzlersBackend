@@ -32,60 +32,60 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       ecr_repository_url: ${{ steps.extract-url.outputs.repo_url }}
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-      
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: 1.5.0
-      
+
       - name: Terraform Init
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: terraform init
-      
+
       - name: Terraform Format
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: terraform fmt
-      
+
       - name: Find subnet IDs
-        if: false  # Disabled - Uncomment to debug subnet discovery
+        if: false # Disabled - Uncomment to debug subnet discovery
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: |
           echo "Finding subnets in VPC ${{ env.TF_VAR_vpc_name }}..."
           VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=${{ env.TF_VAR_vpc_name }}" --query "Vpcs[0].VpcId" --output text)
           echo "VPC ID: $VPC_ID"
           aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --query "Subnets[*].{SubnetId:SubnetId, AZ:AvailabilityZone, Tags:Tags}" --output json
-      
+
       - name: Terraform Validate
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: terraform validate
-      
+
       - name: Terraform Plan
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: terraform plan -var="environment=dev"
-      
+
       - name: Terraform Apply
         if: github.event_name == 'push'
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: terraform apply -auto-approve -var="environment=dev"
-      
+
       - name: Terraform Output to File
         if: github.event_name == 'push'
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: |
           terraform output -raw ecr_repository_url > repo_url.txt
           echo "Repository URL from file: $(cat repo_url.txt)"
-      
+
       - name: Extract Repository URL
         if: github.event_name == 'push'
         id: extract-url
@@ -95,35 +95,35 @@ jobs:
           REPO_URL=$(cat repo_url.txt | grep -o '^[^:]*\.dkr\.ecr\.[^:]*\.amazonaws\.com/[^:]*' || echo "509399625426.dkr.ecr.ap-south-1.amazonaws.com/rizzlers-tf-dev")
           echo "repo_url=${REPO_URL}" >> $GITHUB_OUTPUT
           echo "Clean Repository URL: ${REPO_URL}"
-  
+
   build-and-deploy:
     name: Build and Deploy
     needs: terraform
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          java-version: "17"
+          distribution: "temurin"
           cache: maven
-      
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-      
+
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
-      
+
       - name: Verify ECR Repository exists or create it
         run: |
           REPO_EXISTS=$(aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY_NAME }} --query 'repositories[0].repositoryName' --output text 2>/dev/null || echo "")
@@ -133,21 +133,21 @@ jobs:
           else
             echo "ECR repository ${{ env.ECR_REPOSITORY_NAME }} already exists"
           fi
-      
+
       - name: Check existing ECR images
         run: |
           echo "Existing images in ECR repository ${{ env.ECR_REPOSITORY_NAME }}:"
           aws ecr describe-images --repository-name ${{ env.ECR_REPOSITORY_NAME }} --query 'imageDetails[*].{Tags:imageTags,PushedAt:imagePushedAt}' --output table || echo "No images found or error listing images"
-      
+
       - name: Build and test with Maven
         working-directory: backend
         run: |
           # Try to generate Maven wrapper if necessary
           mvn -N io.takari:maven:wrapper -Dmaven=3.9.5 || true
-          
+
           # Build the project (create a dummy JAR if it fails)
           mvn clean package -DskipTests || mkdir -p target && touch target/app.jar
-      
+
       - name: Build and push Docker image
         working-directory: backend
         env:
@@ -157,29 +157,29 @@ jobs:
           # Define the full image name with registry and repository
           FULL_IMAGE_NAME="${ECR_REGISTRY}/${{ env.ECR_REPOSITORY_NAME }}"
           echo "Building and pushing to: ${FULL_IMAGE_NAME}"
-          
+
           # Build the image with both tags
           docker build -t ${FULL_IMAGE_NAME}:${IMAGE_TAG} -t ${FULL_IMAGE_NAME}:latest .
-          
+
           # Push both tags
           echo "Pushing image with tag: ${IMAGE_TAG}"
           docker push ${FULL_IMAGE_NAME}:${IMAGE_TAG}
-          
+
           echo "Pushing image with tag: latest"
           docker push ${FULL_IMAGE_NAME}:latest
-          
+
           # Verify image exists in ECR
           echo "Verifying image in ECR repository..."
           aws ecr describe-images --repository-name ${{ env.ECR_REPOSITORY_NAME }} --image-ids imageTag=latest
-          
+
           # Save exact image URI for task definition update
           echo "FULL_IMAGE_URI=${FULL_IMAGE_NAME}:latest" >> $GITHUB_ENV
-      
+
       - name: Check and update ECS task definition
         run: |
           # Get the current task definition
           TASK_DEF=$(aws ecs describe-task-definition --task-definition ${{ env.ECS_TASK_DEFINITION }} --query 'taskDefinition' 2>/dev/null || echo '{}')
-          
+
           if [ "$TASK_DEF" = "{}" ]; then
             echo "Task definition not found, creating a new one..."
             
@@ -256,7 +256,7 @@ EOF
             echo "Created new task definition"
             
           else
-            echo "Found task definition ${{ env.ECS_TASK_DEFINITION }}, updating it..."
+            echo "Found task definition ${{ env.ECS_TASK_DEFINITION }}, checking container image..."
             
             # Extract container definition and image
             CONTAINER_NAME="${{ env.ECS_TASK_DEFINITION }}-container"
@@ -266,59 +266,71 @@ EOF
             echo "Current container image: $CURRENT_IMAGE"
             echo "New container image: $FULL_IMAGE_URI"
             
-            # Update the task definition with improved configuration
-            TASK_DEF_JSON=$(echo "$TASK_DEF" | jq --arg image "$FULL_IMAGE_URI" --arg name "$CONTAINER_NAME" '
-              .containerDefinitions = [.containerDefinitions[] | 
-                if .name == $name then 
-                  .image = $image | 
-                  .logConfiguration = {
-                    "logDriver": "awslogs",
-                    "options": {
-                      "awslogs-group": "/ecs/${{ env.ECS_TASK_DEFINITION }}",
-                      "awslogs-region": "${{ env.AWS_REGION }}",
-                      "awslogs-stream-prefix": "ecs",
-                      "awslogs-create-group": "true"
-                    }
-                  } |
-                  .healthCheck = {
-                    "command": ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health || exit 1"],
-                    "interval": 30,
-                    "timeout": 5,
-                    "retries": 3,
-                    "startPeriod": 60
-                  } |
-                  .environment = [
-                    {"name": "SPRING_PROFILES_ACTIVE", "value": "dev"},
-                    {"name": "SERVER_PORT", "value": "8080"},
-                    {"name": "SPRING_DATASOURCE_URL", "value": "jdbc:postgresql://database-kdu.czpwqpnfk9dp.ap-south-1.rds.amazonaws.com:5432/Database_10_dev"},
-                    {"name": "SPRING_DATASOURCE_USERNAME", "value": "Team_10"},
-                    {"name": "SPRING_DATASOURCE_PASSWORD", "value": "Password10"}
-                  ]
-                else . end
-              ] | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
-            ')
-            
-            echo "New task definition: $TASK_DEF_JSON"
-            
-            # Register the new task definition
-            echo "$TASK_DEF_JSON" > updated-task-definition.json
-            aws ecs register-task-definition --cli-input-json file://updated-task-definition.json
+            if [ "$CURRENT_IMAGE" != "$FULL_IMAGE_URI" ]; then
+              echo "Updating task definition with new image..."
+              
+              # Create a temporary JSON file with the jq configuration
+              cat > update_task_def.jq << 'EOF'
+.containerDefinitions = [.containerDefinitions[] | 
+  if .name == $name then 
+    .image = $image | 
+    .logConfiguration = {
+      "logDriver": "awslogs",
+      "options": {
+        "awslogs-group": "/ecs/TASK_DEF_NAME",
+        "awslogs-region": "AWS_REGION",
+        "awslogs-stream-prefix": "ecs",
+        "awslogs-create-group": "true"
+      }
+    } |
+    .healthCheck = {
+      "command": ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health || exit 1"],
+      "interval": 30,
+      "timeout": 5,
+      "retries": 3,
+      "startPeriod": 60
+    } |
+    .environment = [
+      {"name": "SPRING_PROFILES_ACTIVE", "value": "dev"},
+      {"name": "SERVER_PORT", "value": "8080"},
+      {"name": "SPRING_DATASOURCE_URL", "value": "jdbc:postgresql://database-kdu.czpwqpnfk9dp.ap-south-1.rds.amazonaws.com:5432/Database_10_dev"},
+      {"name": "SPRING_DATASOURCE_USERNAME", "value": "Team_10"},
+      {"name": "SPRING_DATASOURCE_PASSWORD", "value": "Password10"}
+    ]
+  else . end
+] | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
+EOF
+              
+              # Replace placeholders in the jq file
+              sed -i "s/TASK_DEF_NAME/${{ env.ECS_TASK_DEFINITION }}/g" update_task_def.jq
+              sed -i "s/AWS_REGION/${{ env.AWS_REGION }}/g" update_task_def.jq
+              
+              # Run jq with the configuration file
+              TASK_DEF_JSON=$(echo "$TASK_DEF" | jq --arg image "$FULL_IMAGE_URI" --arg name "$CONTAINER_NAME" -f update_task_def.jq)
+              
+              echo "New task definition: $TASK_DEF_JSON"
+              
+              # Register the new task definition
+              aws ecs register-task-definition --cli-input-json "$TASK_DEF_JSON"
+            else
+              echo "Image is already up to date, no need to update task definition"
+            fi
           fi
-      
+
       - name: Force new deployment
         run: |
           echo "Deploying to cluster: ${{ env.ECS_CLUSTER }}, service: ${{ env.ECS_SERVICE }}"
           aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --force-new-deployment
-      
+
       - name: Wait for service to stabilize
         run: |
           echo "Waiting for service to stabilize..."
           aws ecs wait services-stable --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} || true
-          
+
           # Check service status and tasks
           echo "Service status:"
           aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query 'services[0].{status:status,desiredCount:desiredCount,runningCount:runningCount,events:events[0:3]}'
-          
+
           echo "Latest task status:"
           TASK_ARN=$(aws ecs list-tasks --cluster ${{ env.ECS_CLUSTER }} --service-name ${{ env.ECS_SERVICE }} --query 'taskArns[0]' --output text)
           if [ "$TASK_ARN" != "None" ]; then
@@ -336,4 +348,4 @@ EOF
             fi
           else
             echo "No tasks found for service"
-          fi 
+          fi
