@@ -123,7 +123,7 @@ jobs:
       
       - name: Build and test with Maven
         working-directory: backend
-        run: ./mvnw clean package -DskipTests
+        run: mvn clean package -DskipTests
       
       - name: Build, tag, and push image to Amazon ECR
         working-directory: backend
