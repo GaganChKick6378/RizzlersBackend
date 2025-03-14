@@ -167,7 +167,7 @@ resource "aws_api_gateway_integration_response" "proxy_options_integration_respo
 
 # Deployment and Stages
 
-# Deployment configuration with explicit timeouts and proper lifecycle management
+# Deployment configuration with proper lifecycle management
 resource "aws_api_gateway_deployment" "deployment" {
   depends_on = [
     aws_api_gateway_integration.lb_integration,
@@ -193,12 +193,6 @@ resource "aws_api_gateway_deployment" "deployment" {
   
   lifecycle {
     create_before_destroy = true
-  }
-  
-  # Give AWS time to propagate the deployment
-  timeouts {
-    create = "5m"
-    update = "5m"
   }
 }
 
