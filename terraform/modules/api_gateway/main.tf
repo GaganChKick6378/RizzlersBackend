@@ -63,20 +63,27 @@ resource "aws_api_gateway_method" "proxy_method" {
   resource_id   = aws_api_gateway_resource.proxy.id
   http_method   = "ANY"
   authorization = "NONE" # No authorization for now as per requirement
+  
+  # Define the request parameters that need to be passed
+  request_parameters = {
+    "method.request.path.proxy" = true
+  }
 }
 
 # Integration with Load Balancer
 resource "aws_api_gateway_integration" "lb_integration" {
-  rest_api_id = aws_api_gateway_rest_api.api.id
-  resource_id = aws_api_gateway_resource.proxy.id
-  http_method = aws_api_gateway_method.proxy_method.http_method
+  rest_api_id             = aws_api_gateway_rest_api.api.id
+  resource_id             = aws_api_gateway_resource.proxy.id
+  http_method             = aws_api_gateway_method.proxy_method.http_method
   
   type                    = "HTTP_PROXY"
   integration_http_method = "ANY"
-  uri                     = "http://${var.load_balancer_dns}/{proxy}"
+  uri                     = "http://${var.load_balancer_dns}/"
   connection_type         = "VPC_LINK"
   connection_id           = aws_api_gateway_vpc_link.link.id
   
+  # Use request template instead of path parameters
+  cache_key_parameters    = ["method.request.path.proxy"]
   request_parameters = {
     "integration.request.path.proxy" = "method.request.path.proxy"
   }
@@ -100,6 +107,9 @@ resource "aws_api_gateway_integration" "root_integration" {
   uri                     = "http://${var.load_balancer_dns}/"
   connection_type         = "VPC_LINK"
   connection_id           = aws_api_gateway_vpc_link.link.id
+  
+  # Ensure cache configuration is consistent
+  cache_key_parameters = []
 }
 
 # Enable CORS for the proxy resource
