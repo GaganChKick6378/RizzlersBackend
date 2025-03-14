@@ -30,6 +30,8 @@ module "ecr" {
   source = "./modules/ecr"
   name   = local.resource_name_prefix
   tags   = var.tags
+  prevent_destroy = var.prevent_destroy
+  force_delete = var.force_delete
 }
 
 # Security Groups

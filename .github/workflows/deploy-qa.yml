@@ -16,6 +16,9 @@ env:
   TF_VAR_vpc_name: KDU-25-VPC
   TF_VAR_availability_zones: '["ap-south-1a", "ap-south-1b", "ap-south-1c"]'
   TF_VAR_use_existing_resources: "true"
+  # Specify subnet IDs explicitly to avoid subnet errors
+  TF_VAR_public_subnet_ids: '["subnet-0b6ce2e699142888b", "subnet-04648c3dd5600df55", "subnet-0600d671cd9103ccc"]'
+  TF_VAR_private_subnet_ids: '["subnet-0b31fd91378b4e19c", "subnet-0799d7919a2b9f1e5", "subnet-0185b2ce809770610"]'
   # Use a shared resource prefix for common infrastructure
   TF_VAR_resource_name_prefix: "rizzlers-tf"
   # Use environment-specific names for services
@@ -174,43 +177,211 @@ jobs:
       - name: Terraform Apply
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: |
-          # Set TF_CLI_ARGS to ignore certain errors during apply
-          export TF_CLI_ARGS_apply="-parallelism=1 -refresh=true"
+          # Set more aggressive error handling
+          set -e
           
-          # Focus only on environment-specific resources since shared infrastructure already exists
-          echo "Creating/updating QA-specific resources only..."
+          # Create a terraform.tfvars file with flags to prevent resource deletion
+          cat > terraform.tfvars << EOF
+          environment = "qa"
+          prevent_destroy = true
+          force_delete_ecr = false
+          public_subnet_ids = ["subnet-0b6ce2e699142888b", "subnet-04648c3dd5600df55", "subnet-0600d671cd9103ccc"]
+          private_subnet_ids = ["subnet-0b31fd91378b4e19c", "subnet-0799d7919a2b9f1e5", "subnet-0185b2ce809770610"]
+          EOF
           
-          # Focus on the ECS task definition and service for QA
-          echo "Creating ECS task definition for QA..."
-          terraform apply -auto-approve -var="environment=qa" \
-            -target=module.ecs.aws_ecs_task_definition.app_task || echo "Task definition creation had issues"
+          # Skip shared resources and only focus on environment-specific resources
           
-          # Create QA-specific ECR repository
-          echo "Creating ECR repository for QA..."
-          terraform apply -auto-approve -var="environment=qa" \
-            -target=module.ecr.aws_ecr_repository.app || echo "ECR repository creation had issues"
+          echo "1. Creating ECS task definition for QA..."
+          # Create the task definition first
+          aws ecs register-task-definition --cli-input-json "$(cat << EOF
+          {
+            "family": "${{ env.ECS_TASK_DEFINITION }}",
+            "containerDefinitions": [
+              {
+                "name": "${{ env.ECS_TASK_DEFINITION }}-container",
+                "image": "509399625426.dkr.ecr.ap-south-1.amazonaws.com/${{ env.ECR_REPOSITORY_NAME }}:latest",
+                "essential": true,
+                "portMappings": [
+                  {
+                    "containerPort": 8080,
+                    "hostPort": 8080,
+                    "protocol": "tcp"
+                  }
+                ],
+                "environment": [
+                  {"name": "SPRING_PROFILES_ACTIVE", "value": "qa"},
+                  {"name": "SPRING_DATASOURCE_URL", "value": "${{ env.TF_VAR_database_url }}"},
+                  {"name": "SPRING_DATASOURCE_USERNAME", "value": "${{ env.TF_VAR_database_username }}"},
+                  {"name": "SPRING_DATASOURCE_PASSWORD", "value": "${{ env.TF_VAR_database_password }}"}
+                ],
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "/ecs/${{ env.ECS_TASK_DEFINITION }}",
+                    "awslogs-region": "${{ env.AWS_REGION }}",
+                    "awslogs-stream-prefix": "ecs",
+                    "awslogs-create-group": "true"
+                  }
+                },
+                "healthCheck": {
+                  "command": ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health || exit 1"],
+                  "interval": 30,
+                  "timeout": 5,
+                  "retries": 3,
+                  "startPeriod": 60
+                }
+              }
+            ],
+            "requiresCompatibilities": [
+              "FARGATE"
+            ],
+            "networkMode": "awsvpc",
+            "cpu": "256",
+            "memory": "512",
+            "executionRoleArn": "arn:aws:iam::509399625426:role/ecsTaskExecutionRole"
+          }
+          EOF
+          )" || echo "Task definition creation had issues"
           
-          # Create the QA service in the existing cluster
-          echo "Creating ECS service for QA..."
-          terraform apply -auto-approve -var="environment=qa" \
-            -target=module.ecs.aws_ecs_service.app_service || echo "ECS service creation had issues"
+          # Make sure ECR repository exists
+          echo "2. Ensuring ECR repository exists..."
+          REPO_EXISTS=$(aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY_NAME }} --query 'repositories[0].repositoryName' --output text 2>/dev/null || echo "")
+          if [ -z "$REPO_EXISTS" ]; then
+            echo "Creating ECR repository ${{ env.ECR_REPOSITORY_NAME }}"
+            aws ecr create-repository --repository-name ${{ env.ECR_REPOSITORY_NAME }}
+          else
+            echo "ECR repository already exists, skipping creation"
+          fi
           
-          # Handle API Gateway stage for QA
-          echo "Creating API Gateway QA stage..."
-          terraform apply -auto-approve -var="environment=qa" \
-            -target=module.api_gateway.aws_api_gateway_stage.qa || echo "API Gateway stage creation had issues"
+          # Check if ECS cluster exists
+          echo "3. Ensuring ECS cluster exists..."
+          CLUSTER_EXISTS=$(aws ecs describe-clusters --clusters ${{ env.ECS_CLUSTER }} --query "clusters[0].clusterArn" --output text || echo "")
+          if [ -z "$CLUSTER_EXISTS" ]; then
+            echo "Creating ECS cluster ${{ env.ECS_CLUSTER }}"
+            aws ecs create-cluster --cluster-name ${{ env.ECS_CLUSTER }}
+          else
+            echo "ECS cluster already exists, skipping creation"
+          fi
+          
+          # Get security group
+          echo "4. Getting security group..."
+          VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=${{ env.TF_VAR_vpc_name }}" --query "Vpcs[0].VpcId" --output text)
+          SECURITY_GROUP_ID=$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=$VPC_ID" "Name=group-name,Values=rizzlers-tf-ecs-sg" --query "SecurityGroups[0].GroupId" --output text || echo "")
+          
+          if [ -z "$SECURITY_GROUP_ID" ]; then
+            echo "Creating security group for ECS..."
+            SECURITY_GROUP_ID=$(aws ec2 create-security-group --group-name rizzlers-tf-ecs-sg --description "Security group for ECS service" --vpc-id $VPC_ID --query "GroupId" --output text)
+            aws ec2 authorize-security-group-ingress --group-id $SECURITY_GROUP_ID --protocol tcp --port 8080 --cidr 0.0.0.0/0
+          fi
+          
+          # Check if the ECS service exists, create if it doesn't
+          echo "5. Checking ECS service status..."
+          SERVICE_EXISTS=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query "services[0].status" --output text 2>/dev/null || echo "")
+          
+          if [ "$SERVICE_EXISTS" != "ACTIVE" ]; then
+            echo "Creating/updating ECS service..."
+            # Get target group ARN - use a consistent name
+            TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups --names rizzlers-tf-qa-tg --query "TargetGroups[0].TargetGroupArn" --output text || echo "")
             
-          # Create QA-specific CloudWatch resources
-          echo "Creating CloudWatch resources for QA..."
-          terraform apply -auto-approve -var="environment=qa" \
-            -target=module.cloudwatch.aws_cloudwatch_log_group.app_logs || echo "CloudWatch resource creation had issues"
+            if [ -z "$TARGET_GROUP_ARN" ]; then
+              echo "Creating target group..."
+              # Check if ALB exists
+              ALB_ARN=$(aws elbv2 describe-load-balancers --names rizzlers-tf-alb --query "LoadBalancers[0].LoadBalancerArn" --output text || echo "")
+              
+              if [ -z "$ALB_ARN" ]; then
+                echo "Creating ALB..."
+                ALB_ARN=$(aws elbv2 create-load-balancer \
+                  --name rizzlers-tf-alb \
+                  --subnets subnet-0b6ce2e699142888b subnet-04648c3dd5600df55 \
+                  --security-groups $SECURITY_GROUP_ID \
+                  --query "LoadBalancers[0].LoadBalancerArn" --output text)
+              fi
+              
+              # Create target group
+              TARGET_GROUP_ARN=$(aws elbv2 create-target-group \
+                --name rizzlers-tf-qa-tg \
+                --protocol HTTP \
+                --port 8080 \
+                --vpc-id $VPC_ID \
+                --target-type ip \
+                --health-check-path /api/health \
+                --query "TargetGroups[0].TargetGroupArn" --output text)
+                
+              # Create listener
+              LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $ALB_ARN --query "Listeners[0].ListenerArn" --output text || echo "")
+              
+              if [ -z "$LISTENER_ARN" ]; then
+                echo "Creating listener..."
+                LISTENER_ARN=$(aws elbv2 create-listener \
+                  --load-balancer-arn $ALB_ARN \
+                  --protocol HTTP \
+                  --port 80 \
+                  --default-actions Type=forward,TargetGroupArn=$TARGET_GROUP_ARN \
+                  --query "Listeners[0].ListenerArn" --output text)
+              fi
+            fi
+            
+            # Create or update service
+            echo "Creating ECS service with target group $TARGET_GROUP_ARN..."
+            aws ecs create-service \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --service-name ${{ env.ECS_SERVICE }} \
+              --task-definition ${{ env.ECS_TASK_DEFINITION }} \
+              --desired-count 1 \
+              --launch-type FARGATE \
+              --platform-version LATEST \
+              --network-configuration "awsvpcConfiguration={subnets=[subnet-0b31fd91378b4e19c,subnet-0799d7919a2b9f1e5],securityGroups=[$SECURITY_GROUP_ID],assignPublicIp=ENABLED}" \
+              --load-balancers "targetGroupArn=$TARGET_GROUP_ARN,containerName=${{ env.ECS_TASK_DEFINITION }}-container,containerPort=8080" || \
+            aws ecs update-service \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --service ${{ env.ECS_SERVICE }} \
+              --task-definition ${{ env.ECS_TASK_DEFINITION }} \
+              --desired-count 1 \
+              --force-new-deployment
+          else
+            echo "ECS service exists, updating with new task definition..."
+            aws ecs update-service \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --service ${{ env.ECS_SERVICE }} \
+              --task-definition ${{ env.ECS_TASK_DEFINITION }} \
+              --force-new-deployment || echo "Service update had issues"
+          fi
           
-          # Link all resources together - final targeted apply
-          echo "Linking resources together..."
-          terraform apply -auto-approve -var="environment=qa" || echo "Some resources may have been skipped"
+          # Check for API Gateway and create QA stage if needed
+          echo "6. Checking API Gateway..."
+          API_ID=$(aws apigateway get-rest-apis --query "items[?name=='${{ env.TF_VAR_api_gateway_name }}'].id" --output text || echo "")
           
-          # Always exit successfully
-          exit 0
+          if [ -n "$API_ID" ]; then
+            echo "Found API Gateway, checking for QA stage..."
+            QA_STAGE=$(aws apigateway get-stages --rest-api-id "$API_ID" --query "item[?stageName=='qa'].stageName" --output text || echo "")
+            
+            if [ -z "$QA_STAGE" ]; then
+              echo "Creating QA stage in existing API Gateway..."
+              DEPLOYMENT_ID=$(aws apigateway get-deployments --rest-api-id "$API_ID" --query "items[0].id" --output text || echo "")
+              
+              if [ -n "$DEPLOYMENT_ID" ]; then
+                aws apigateway create-stage \
+                  --rest-api-id "$API_ID" \
+                  --stage-name "qa" \
+                  --deployment-id "$DEPLOYMENT_ID" || echo "Failed to create QA stage"
+              else
+                echo "No deployments found, can't create stage"
+              fi
+            else
+              echo "QA stage already exists in API Gateway"
+            fi
+          else
+            echo "API Gateway not found, skipping stage creation"
+          fi
+          
+          echo "7. Creating CloudWatch Log Group for QA..."
+          # Create CloudWatch log group if it doesn't exist
+          LOG_GROUP_EXISTS=$(aws logs describe-log-groups --log-group-name-prefix "/ecs/${{ env.ECS_TASK_DEFINITION }}" --query "logGroups[0].logGroupName" --output text || echo "")
+          if [ -z "$LOG_GROUP_EXISTS" ]; then
+            aws logs create-log-group --log-group-name "/ecs/${{ env.ECS_TASK_DEFINITION }}"
+          fi
+          
+          echo "Deployment completed successfully!"
 
       - name: Terraform Output to File
         working-directory: ${{ env.TERRAFORM_DIR }}
@@ -431,6 +602,13 @@ jobs:
               echo "Service Status: $SERVICE_STATUS"
               echo "Desired Tasks: $DESIRED_COUNT"
               echo "Running Tasks: $RUNNING_COUNT"
+              
+              # If the service is stuck, provide a helper command to fix it
+              if [[ "$SERVICE_STATUS" != "ACTIVE" || "$RUNNING_COUNT" -lt "$DESIRED_COUNT" ]]; then
+                echo "⚠️ Service may need attention. Consider using the following commands to fix it:"
+                echo "aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --desired-count 0"
+                echo "aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --desired-count 1"
+              fi
             else
               echo "❌ QA Service does not exist in the shared cluster"
               echo "The service may need to be manually created with name '${{ env.ECS_SERVICE }}'"

@@ -1,6 +1,7 @@
 resource "aws_ecr_repository" "app_repo" {
   name                 = var.name
   image_tag_mutability = "MUTABLE"
+  force_delete         = var.force_delete
   
   image_scanning_configuration {
     scan_on_push = true
@@ -12,6 +13,11 @@ resource "aws_ecr_repository" "app_repo" {
       Name = "Rizzlers-ECR-${var.name}"
     }
   )
+
+  # Prevent destruction of repository with images
+  lifecycle {
+    prevent_destroy = var.prevent_destroy
+  }
 }
 
 resource "aws_ecr_lifecycle_policy" "app_repo_policy" {

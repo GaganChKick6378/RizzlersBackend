@@ -93,4 +93,16 @@ variable "private_subnet_ids" {
   type        = list(string)
   # These should be replaced with actual subnet IDs during deployment
   default     = []
+}
+
+variable "prevent_destroy" {
+  description = "Flag to prevent destroying resources even if they would normally be destroyed"
+  type        = bool
+  default     = false
+}
+
+variable "force_delete_ecr" {
+  description = "Flag to force deletion of ECR repositories even if they contain images"
+  type        = bool
+  default     = false
 } 
