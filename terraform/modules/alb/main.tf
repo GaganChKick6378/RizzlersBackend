@@ -81,26 +81,46 @@ resource "aws_lb_listener" "http" {
   
   default_action {
     type = "forward"
-    target_group_arn = aws_lb_target_group.app_tg.arn
+    target_group_arn = aws_lb_target_group.dev_tg.arn
   }
 }
 
-# Using HTTP only for simplicity and to avoid ACM certificate validation timing out
-# resource "aws_lb_listener" "https" {
-#   load_balancer_arn = aws_lb.app_lb.arn
-#   port              = 443
-#   protocol          = "HTTPS"
-#   ssl_policy        = "ELBSecurityPolicy-2016-08"
-#   certificate_arn   = aws_acm_certificate.cert.arn
-#   
-#   default_action {
-#     type             = "forward"
-#     target_group_arn = aws_lb_target_group.app_tg.arn
-#   }
-# }
+# Create additional listener rules for path-based routing
+resource "aws_lb_listener_rule" "dev_rule" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 10
 
-resource "aws_lb_target_group" "app_tg" {
-  name        = "${var.name_prefix}-tg"
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.dev_tg.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/dev/*"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "qa_rule" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 20
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.qa_tg.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/qa/*"]
+    }
+  }
+}
+
+# Target Group for Dev
+resource "aws_lb_target_group" "dev_tg" {
+  name        = "${var.name_prefix}-dev-tg"
   port        = 80
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
@@ -119,7 +139,7 @@ resource "aws_lb_target_group" "app_tg" {
   tags = merge(
     var.tags,
     {
-      Name = "Rizzlers-ALB-TargetGroup-${var.environment}"
+      Name = "Rizzlers-ALB-DevTargetGroup"
     }
   )
   
@@ -127,6 +147,50 @@ resource "aws_lb_target_group" "app_tg" {
     create_before_destroy = true
   }
 }
+
+# Target Group for QA
+resource "aws_lb_target_group" "qa_tg" {
+  name        = "${var.name_prefix}-qa-tg"
+  port        = 80
+  protocol    = "HTTP"
+  vpc_id      = var.vpc_id
+  target_type = "ip"
+  
+  health_check {
+    path                = var.health_check_path
+    port                = "traffic-port"
+    healthy_threshold   = 3
+    unhealthy_threshold = 3
+    timeout             = 5
+    interval            = 30
+    matcher             = "200-299"
+  }
+  
+  tags = merge(
+    var.tags,
+    {
+      Name = "Rizzlers-ALB-QATargetGroup"
+    }
+  )
+  
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# Using HTTP only for simplicity and to avoid ACM certificate validation timing out
+# resource "aws_lb_listener" "https" {
+#   load_balancer_arn = aws_lb.app_lb.arn
+#   port              = 443
+#   protocol          = "HTTPS"
+#   ssl_policy        = "ELBSecurityPolicy-2016-08"
+#   certificate_arn   = aws_acm_certificate.cert.arn
+#   
+#   default_action {
+#     type             = "forward"
+#     target_group_arn = aws_lb_target_group.app_tg.arn
+#   }
+# }
 
 # Comment out ACM certificate to avoid validation timeout
 # resource "aws_acm_certificate" "cert" {

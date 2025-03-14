@@ -8,9 +8,19 @@ output "alb_arn" {
   value       = aws_lb.app_lb.arn
 }
 
+output "dev_target_group_arn" {
+  description = "ARN of the dev target group"
+  value       = aws_lb_target_group.dev_tg.arn
+}
+
+output "qa_target_group_arn" {
+  description = "ARN of the qa target group"
+  value       = aws_lb_target_group.qa_tg.arn
+}
+
 output "target_group_arn" {
-  description = "ARN of the target group"
-  value       = aws_lb_target_group.app_tg.arn
+  description = "ARN of the default target group (dev)"
+  value       = aws_lb_target_group.dev_tg.arn
 }
 
 output "http_listener_arn" {

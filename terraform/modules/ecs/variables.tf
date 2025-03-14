@@ -65,8 +65,14 @@ variable "database_password" {
 }
 
 variable "target_group_arn" {
-  description = "ARN of the target group to register tasks with"
+  description = "ARN of the target group to register dev tasks with"
   type        = string
+}
+
+variable "qa_target_group_arn" {
+  description = "ARN of the target group to register QA tasks with"
+  type        = string
+  default     = ""  # Optional to maintain backward compatibility
 }
 
 variable "load_balancer_listener_arn" {

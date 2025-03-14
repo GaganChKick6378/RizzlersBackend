@@ -43,11 +43,11 @@ module "security_groups" {
   tags        = var.tags
 }
 
-# ECS Cluster, Service, and Task Definition
+# ECS Cluster with Dev and QA services
 module "ecs" {
   source          = "./modules/ecs"
   project_name    = var.project_name
-  environment     = var.environment
+  environment     = "shared" # This is now a shared cluster
   vpc_id          = data.aws_vpc.kdu_vpc.id
   subnets         = local.private_subnet_ids
   security_group  = module.security_groups.ecs_sg_id
@@ -59,7 +59,8 @@ module "ecs" {
   database_username = var.database_username
   database_password = var.database_password
   name_prefix     = local.resource_name_prefix
-  target_group_arn = module.alb.target_group_arn
+  target_group_arn = module.alb.dev_target_group_arn
+  qa_target_group_arn = module.alb.qa_target_group_arn
   load_balancer_listener_arn = module.alb.http_listener_arn
 }
 
