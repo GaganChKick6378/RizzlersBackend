@@ -3,10 +3,10 @@ name: Deploy Rizzlers Backend (QA)
 on:
   push:
     branches:
-      - qa
+      - QA
   pull_request:
     branches:
-      - qa
+      - QA
 
 env:
   AWS_REGION: ap-south-1
@@ -75,19 +75,17 @@ jobs:
         run: terraform plan -var="environment=qa"
 
       - name: Terraform Apply
-        if: github.event_name == 'push'
+        # Now we run for both push and PR events since both will have passed manual approval
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: terraform apply -auto-approve -var="environment=qa"
 
       - name: Terraform Output to File
-        if: github.event_name == 'push'
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: |
           terraform output -raw ecr_repository_url > repo_url.txt
           echo "Repository URL from file: $(cat repo_url.txt)"
 
       - name: Extract Repository URL
-        if: github.event_name == 'push'
         id: extract-url
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: |
@@ -99,7 +97,6 @@ jobs:
   build-and-deploy:
     name: Build and Deploy
     needs: terraform
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
 
     steps:
