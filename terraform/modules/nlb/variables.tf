@@ -8,29 +8,31 @@ variable "environment" {
   type        = string
 }
 
-variable "load_balancer_dns" {
-  description = "DNS name of the load balancer"
-  type        = string
-}
-
-variable "load_balancer_listener_arn" {
-  description = "ARN of the load balancer listener"
-  type        = string
-}
-
-variable "nlb_arn" {
-  description = "ARN of the Network Load Balancer for VPC Link"
-  type        = string
-}
-
 variable "vpc_id" {
   description = "VPC ID"
   type        = string
 }
 
-variable "vpc_link_subnets" {
-  description = "Subnets for the VPC Link"
+variable "subnets" {
+  description = "Subnets for the NLB"
   type        = list(string)
+}
+
+variable "alb_arn" {
+  description = "ARN of the ALB to forward traffic to"
+  type        = string
+}
+
+variable "target_port" {
+  description = "Port for the target group"
+  type        = number
+  default     = 80
+}
+
+variable "listener_port" {
+  description = "Port for the NLB listener"
+  type        = number
+  default     = 80
 }
 
 variable "name_prefix" {

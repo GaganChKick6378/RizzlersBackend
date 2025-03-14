@@ -74,6 +74,20 @@ module "alb" {
   name_prefix   = local.resource_name_prefix
 }
 
+# Network Load Balancer for API Gateway
+module "nlb" {
+  source       = "./modules/nlb"
+  project_name = var.project_name
+  environment  = var.environment
+  vpc_id       = data.aws_vpc.kdu_vpc.id
+  subnets      = local.public_subnet_ids
+  alb_arn      = module.alb.alb_arn
+  target_port  = 80
+  listener_port = 80
+  tags         = var.tags
+  name_prefix  = local.resource_name_prefix
+}
+
 # API Gateway
 module "api_gateway" {
   source       = "./modules/api_gateway"
@@ -81,6 +95,7 @@ module "api_gateway" {
   environment  = var.environment
   load_balancer_dns = module.alb.alb_dns_name
   load_balancer_listener_arn = module.alb.http_listener_arn
+  nlb_arn      = module.nlb.nlb_arn
   vpc_id       = data.aws_vpc.kdu_vpc.id
   vpc_link_subnets = local.private_subnet_ids
   tags         = var.tags

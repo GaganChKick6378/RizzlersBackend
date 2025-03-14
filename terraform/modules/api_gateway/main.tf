@@ -1,13 +1,9 @@
-resource "aws_apigatewayv2_api" "api" {
-  name          = "${var.name_prefix}-api"
-  protocol_type = "HTTP"
+resource "aws_api_gateway_rest_api" "api" {
+  name        = "${var.name_prefix}-api"
+  description = "Rizzlers REST API Gateway for ${var.environment}"
   
-  cors_configuration {
-    allow_headers     = ["content-type", "x-amz-date", "authorization", "x-api-key", "x-amz-security-token"]
-    allow_methods     = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    allow_origins     = ["http://localhost:3000", "https://drld61kimwwfp.cloudfront.net"]
-    expose_headers    = ["content-type", "content-length"]
-    max_age           = 3600
+  endpoint_configuration {
+    types = ["REGIONAL"]
   }
   
   tags = merge(
@@ -18,11 +14,10 @@ resource "aws_apigatewayv2_api" "api" {
   )
 }
 
-# VPC Link for private integration
-resource "aws_apigatewayv2_vpc_link" "link" {
-  name               = "${var.name_prefix}-vpce-link"
-  security_group_ids = [aws_security_group.vpce_sg.id]
-  subnet_ids         = var.vpc_link_subnets
+# Create a VPC Link for integrating with private resources
+resource "aws_api_gateway_vpc_link" "link" {
+  name        = "${var.name_prefix}-vpce-link"
+  target_arns = [var.nlb_arn]
   
   tags = merge(
     var.tags,
@@ -55,61 +50,133 @@ resource "aws_security_group_rule" "vpce_egress" {
   cidr_blocks       = ["0.0.0.0/0"]
 }
 
-# Integration with ALB
-resource "aws_apigatewayv2_integration" "alb_integration" {
-  api_id           = aws_apigatewayv2_api.api.id
-  integration_type = "HTTP_PROXY"
-  
-  integration_uri    = var.load_balancer_listener_arn
-  integration_method = "ANY"
-  connection_type    = "VPC_LINK"
-  connection_id      = aws_apigatewayv2_vpc_link.link.id
-  
-  # Timeout configurations
-  timeout_milliseconds = 29000
+# API resource for the proxy integration
+resource "aws_api_gateway_resource" "proxy" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  parent_id   = aws_api_gateway_rest_api.api.root_resource_id
+  path_part   = "{proxy+}"
 }
 
-# Route configuration
-resource "aws_apigatewayv2_route" "default_route" {
-  api_id    = aws_apigatewayv2_api.api.id
-  route_key = "ANY /{proxy+}"
-  
-  target = "integrations/${aws_apigatewayv2_integration.alb_integration.id}"
+# Setup a method for the proxy resource with ANY HTTP method
+resource "aws_api_gateway_method" "proxy_method" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.proxy.id
+  http_method   = "ANY"
+  authorization_type = "NONE" # No authorization for now as per requirement
 }
 
-# Stages
-resource "aws_apigatewayv2_stage" "dev" {
-  api_id      = aws_apigatewayv2_api.api.id
-  name        = "dev"
-  auto_deploy = true
+# Integration with Load Balancer
+resource "aws_api_gateway_integration" "lb_integration" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.proxy.id
+  http_method = aws_api_gateway_method.proxy_method.http_method
   
-  default_route_settings {
-    throttling_burst_limit = 100
-    throttling_rate_limit  = 50
-    detailed_metrics_enabled = true
+  type                    = "HTTP_PROXY"
+  integration_http_method = "ANY"
+  uri                     = "http://${var.load_balancer_dns}/{proxy}"
+  connection_type         = "VPC_LINK"
+  connection_id           = aws_api_gateway_vpc_link.link.id
+  
+  request_parameters = {
+    "integration.request.path.proxy" = "method.request.path.proxy"
+  }
+}
+
+# Root path method and integration
+resource "aws_api_gateway_method" "root_method" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_rest_api.api.root_resource_id
+  http_method   = "ANY"
+  authorization_type = "NONE"
+}
+
+resource "aws_api_gateway_integration" "root_integration" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_rest_api.api.root_resource_id
+  http_method = aws_api_gateway_method.root_method.http_method
+  
+  type                    = "HTTP_PROXY"
+  integration_http_method = "ANY"
+  uri                     = "http://${var.load_balancer_dns}/"
+  connection_type         = "VPC_LINK"
+  connection_id           = aws_api_gateway_vpc_link.link.id
+}
+
+# Enable CORS for the proxy resource
+resource "aws_api_gateway_method" "proxy_options" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.proxy.id
+  http_method   = "OPTIONS"
+  authorization_type = "NONE"
+}
+
+resource "aws_api_gateway_method_response" "proxy_options_response" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.proxy.id
+  http_method = aws_api_gateway_method.proxy_options.http_method
+  status_code = "200"
+  
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration" "proxy_options_integration" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.proxy.id
+  http_method = aws_api_gateway_method.proxy_options.http_method
+  type        = "MOCK"
+  
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "proxy_options_integration_response" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.proxy.id
+  http_method = aws_api_gateway_method.proxy_options.http_method
+  status_code = aws_api_gateway_method_response.proxy_options_response.status_code
+  
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,DELETE,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
+# Deployment and Stages
+resource "aws_api_gateway_deployment" "deployment" {
+  depends_on = [
+    aws_api_gateway_integration.lb_integration,
+    aws_api_gateway_integration.root_integration,
+    aws_api_gateway_integration_response.proxy_options_integration_response
+  ]
+  
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  
+  # Use a timestamp to force redeployment when needed
+  triggers = {
+    redeployment = sha1(jsonencode([
+      aws_api_gateway_resource.proxy.id,
+      aws_api_gateway_method.proxy_method.id,
+      aws_api_gateway_integration.lb_integration.id,
+      aws_api_gateway_method.root_method.id,
+      aws_api_gateway_integration.root_integration.id
+    ]))
   }
   
-  # Enable access logging
-  access_log_settings {
-    destination_arn = aws_cloudwatch_log_group.api_logs.arn
-    format = jsonencode({
-      requestId      = "$context.requestId"
-      ip             = "$context.identity.sourceIp"
-      requestTime    = "$context.requestTime"
-      httpMethod     = "$context.httpMethod"
-      resourcePath   = "$context.resourcePath"
-      status         = "$context.status"
-      protocol       = "$context.protocol"
-      responseLength = "$context.responseLength"
-      integrationLatency = "$context.integrationLatency"
-      responseLatency = "$context.responseLatency"
-    })
+  lifecycle {
+    create_before_destroy = true
   }
-  
-  # Enable API caching
-  stage_variables = {
-    "env" = "dev"
-  }
+}
+
+resource "aws_api_gateway_stage" "dev" {
+  deployment_id = aws_api_gateway_deployment.deployment.id
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  stage_name    = "dev"
   
   tags = merge(
     var.tags,
@@ -119,38 +186,10 @@ resource "aws_apigatewayv2_stage" "dev" {
   )
 }
 
-resource "aws_apigatewayv2_stage" "qa" {
-  api_id      = aws_apigatewayv2_api.api.id
-  name        = "qa"
-  auto_deploy = true
-  
-  default_route_settings {
-    throttling_burst_limit = 100
-    throttling_rate_limit  = 50
-    detailed_metrics_enabled = true
-  }
-  
-  # Enable access logging
-  access_log_settings {
-    destination_arn = aws_cloudwatch_log_group.api_logs.arn
-    format = jsonencode({
-      requestId      = "$context.requestId"
-      ip             = "$context.identity.sourceIp"
-      requestTime    = "$context.requestTime"
-      httpMethod     = "$context.httpMethod"
-      resourcePath   = "$context.resourcePath"
-      status         = "$context.status"
-      protocol       = "$context.protocol"
-      responseLength = "$context.responseLength"
-      integrationLatency = "$context.integrationLatency"
-      responseLatency = "$context.responseLatency"
-    })
-  }
-  
-  # Enable API caching
-  stage_variables = {
-    "env" = "qa"
-  }
+resource "aws_api_gateway_stage" "qa" {
+  deployment_id = aws_api_gateway_deployment.deployment.id
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  stage_name    = "qa"
   
   tags = merge(
     var.tags,
