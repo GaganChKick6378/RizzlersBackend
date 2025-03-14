@@ -70,20 +70,28 @@ resource "aws_api_gateway_method" "proxy_method" {
   }
 }
 
-# Integration with Load Balancer
+# Integration with Load Balancer - completely revised for proper proxy path handling
 resource "aws_api_gateway_integration" "lb_integration" {
   rest_api_id             = aws_api_gateway_rest_api.api.id
   resource_id             = aws_api_gateway_resource.proxy.id
   http_method             = aws_api_gateway_method.proxy_method.http_method
   
+  # HTTP_PROXY maintains original HTTP method
   type                    = "HTTP_PROXY"
   integration_http_method = "ANY"
-  uri                     = "http://${var.load_balancer_dns}/"
+  
+  # Path parameter must match exactly what's in the request_parameters mapping
+  uri                     = "http://${var.load_balancer_dns}/{proxy}"
   connection_type         = "VPC_LINK"
   connection_id           = aws_api_gateway_vpc_link.link.id
   
-  # Use request template instead of path parameters
+  # Pass all request parameters to the backend
+  passthrough_behavior    = "WHEN_NO_MATCH"
+  
+  # Cache configuration to improve performance
   cache_key_parameters    = ["method.request.path.proxy"]
+  
+  # Map the request path parameter to the integration URI path parameter
   request_parameters = {
     "integration.request.path.proxy" = "method.request.path.proxy"
   }
@@ -158,6 +166,8 @@ resource "aws_api_gateway_integration_response" "proxy_options_integration_respo
 }
 
 # Deployment and Stages
+
+# Deployment configuration with timestamp to force redeploy
 resource "aws_api_gateway_deployment" "deployment" {
   depends_on = [
     aws_api_gateway_integration.lb_integration,
@@ -169,12 +179,14 @@ resource "aws_api_gateway_deployment" "deployment" {
   
   # Use a timestamp to force redeployment when needed
   triggers = {
+    # Add timestamp to ensure deployment happens on every apply
     redeployment = sha1(jsonencode([
       aws_api_gateway_resource.proxy.id,
       aws_api_gateway_method.proxy_method.id,
       aws_api_gateway_integration.lb_integration.id,
       aws_api_gateway_method.root_method.id,
-      aws_api_gateway_integration.root_integration.id
+      aws_api_gateway_integration.root_integration.id,
+      timestamp()
     ]))
   }
   
