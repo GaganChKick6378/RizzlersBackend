@@ -1,9 +1,13 @@
 resource "aws_ecs_cluster" "app_cluster" {
 <<<<<<< HEAD
+<<<<<<< HEAD
   name = "${var.project_name}-cluster"
 =======
   name = "rizzlers-cluster"
 >>>>>>> 6cb266d (pushing for QA env)
+=======
+  name = "rizzlers-cluster-new"
+>>>>>>> 020147f (pushing for QA env)
   
   setting {
     name  = "containerInsights"
@@ -295,7 +299,7 @@ resource "aws_ecs_service" "dev_service" {
   network_configuration {
     subnets          = var.subnets
     security_groups  = [var.security_group]
-    assign_public_ip = false
+    assign_public_ip = true
   }
   
   load_balancer {
@@ -319,8 +323,11 @@ resource "aws_ecs_service" "dev_service" {
     ignore_changes = [desired_count]
   }
   
-  # Ensure that the service waits for the ALB to be ready
-  depends_on = [var.load_balancer_listener_arn]
+  # Ensure that the service waits for the cluster and ALB to be ready
+  depends_on = [
+    aws_ecs_cluster.app_cluster,
+    var.load_balancer_listener_arn
+  ]
 }
 
 # ECS Service for QA
@@ -340,7 +347,7 @@ resource "aws_ecs_service" "qa_service" {
   network_configuration {
     subnets          = var.subnets
     security_groups  = [var.security_group]
-    assign_public_ip = false
+    assign_public_ip = true
   }
   
   load_balancer {
@@ -364,8 +371,11 @@ resource "aws_ecs_service" "qa_service" {
     ignore_changes = [desired_count]
   }
   
-  # Ensure that the service waits for the ALB to be ready
-  depends_on = [var.load_balancer_listener_arn]
+  # Ensure that the service waits for the cluster and ALB to be ready
+  depends_on = [
+    aws_ecs_cluster.app_cluster,
+    var.load_balancer_listener_arn
+  ]
 }
 
 # Auto Scaling for Dev
