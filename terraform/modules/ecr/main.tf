@@ -14,9 +14,12 @@ resource "aws_ecr_repository" "app_repo" {
     }
   )
 
-  # Prevent destruction of repository with images
-  lifecycle {
-    prevent_destroy = var.prevent_destroy
+  # Use dynamic blocks to conditionally add lifecycle configuration
+  dynamic "lifecycle" {
+    for_each = var.prevent_destroy ? [1] : []
+    content {
+      prevent_destroy = true
+    }
   }
 }
 

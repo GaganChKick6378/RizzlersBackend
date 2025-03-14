@@ -31,7 +31,7 @@ module "ecr" {
   name   = local.resource_name_prefix
   tags   = var.tags
   prevent_destroy = var.prevent_destroy
-  force_delete = var.force_delete
+  force_delete = var.force_delete_ecr
 }
 
 # Security Groups
