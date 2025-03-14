@@ -1,6 +1,6 @@
 resource "aws_api_gateway_rest_api" "api" {
   name        = "${var.name_prefix}-api"
-  description = "Rizzlers REST API Gateway for ${var.environment}"
+  description = "Rizzlers REST API Gateway"
   
   endpoint_configuration {
     types = ["REGIONAL"]
@@ -9,7 +9,7 @@ resource "aws_api_gateway_rest_api" "api" {
   tags = merge(
     var.tags,
     {
-      Name = "Rizzlers-ApiGateway-${var.environment}"
+      Name = "Rizzlers-ApiGateway"
     }
   )
 }
@@ -22,7 +22,7 @@ resource "aws_api_gateway_vpc_link" "link" {
   tags = merge(
     var.tags,
     {
-      Name = "Rizzlers-ApiGateway-VpcLink-${var.environment}"
+      Name = "Rizzlers-ApiGateway-VpcLink"
     }
   )
 }
@@ -36,7 +36,7 @@ resource "aws_security_group" "vpce_sg" {
   tags = merge(
     var.tags,
     {
-      Name = "Rizzlers-ApiGateway-SG-${var.environment}"
+      Name = "Rizzlers-ApiGateway-SG"
     }
   )
 }
@@ -195,6 +195,7 @@ resource "aws_api_gateway_deployment" "deployment" {
   }
 }
 
+# Create dev and qa stages regardless of current environment
 resource "aws_api_gateway_stage" "dev" {
   deployment_id = aws_api_gateway_deployment.deployment.id
   rest_api_id   = aws_api_gateway_rest_api.api.id
@@ -229,7 +230,7 @@ resource "aws_cloudwatch_log_group" "api_logs" {
   tags = merge(
     var.tags,
     {
-      Name = "Rizzlers-ApiGateway-Logs-${var.environment}"
+      Name = "Rizzlers-ApiGateway-Logs"
     }
   )
 }

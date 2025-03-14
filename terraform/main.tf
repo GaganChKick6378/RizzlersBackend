@@ -88,11 +88,11 @@ module "nlb" {
   name_prefix  = local.resource_name_prefix
 }
 
-# API Gateway
+# API Gateway - using a single API Gateway with both dev and qa stages
 module "api_gateway" {
   source       = "./modules/api_gateway"
   project_name = var.project_name
-  environment  = var.environment
+  environment  = var.environment  # Just used for naming resources
   aws_region   = var.aws_region
   load_balancer_dns = module.alb.alb_dns_name
   load_balancer_listener_arn = module.alb.http_listener_arn
@@ -100,7 +100,7 @@ module "api_gateway" {
   vpc_id       = data.aws_vpc.kdu_vpc.id
   vpc_link_subnets = local.private_subnet_ids
   tags         = var.tags
-  name_prefix  = local.resource_name_prefix
+  name_prefix  = "${var.project_name}"  # Remove environment suffix to make it shared
 }
 
 # CloudWatch Logs

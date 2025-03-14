@@ -1,5 +1,5 @@
 resource "aws_ecs_cluster" "app_cluster" {
-  name = "${var.name_prefix}-cluster"
+  name = "${var.project_name}-cluster"
   
   setting {
     name  = "containerInsights"
@@ -9,7 +9,7 @@ resource "aws_ecs_cluster" "app_cluster" {
   tags = merge(
     var.tags,
     {
-      Name = "Rizzlers-ECS-Cluster-${var.environment}"
+      Name = "${var.project_name}-ECS-Cluster"
     }
   )
 }
@@ -122,6 +122,10 @@ resource "aws_ecs_task_definition" "app_task" {
         {
           name  = "APPLICATION_ENVIRONMENT"
           value = var.environment == "dev" ? "Development" : "Testing"
+        },
+        {
+          name  = "SPRING_PROFILES_ACTIVE"
+          value = var.environment
         }
       ]
       

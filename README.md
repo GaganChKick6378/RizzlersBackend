@@ -1,4 +1,54 @@
-# Rizzlers Backend Deployment Guide
+# Rizzlers Backend Infrastructure
+
+## Infrastructure Overview
+
+The Rizzlers Backend is deployed using AWS ECS (Elastic Container Service) with a multi-environment architecture:
+
+### Shared Infrastructure
+
+- **Single ECS Cluster**: We use one ECS cluster (`rizzlers-cluster`) that hosts services for both dev and QA environments
+- **Single API Gateway**: We use one API Gateway with separate stages for each environment:
+  - `/dev` - For development environment
+  - `/qa` - For QA environment
+
+### Environment-Specific Resources
+
+Each environment (dev and QA) has its own:
+- ECS Service
+- Task Definition
+- Container
+- ECR Repository (for container images)
+- Application Load Balancer
+
+## CI/CD Pipeline
+
+The GitHub Actions workflow automatically:
+1. Creates/updates the infrastructure using Terraform
+2. Builds and tests the Spring Boot application
+3. Creates a Docker image and pushes it to ECR
+4. Updates the ECS service with the new image
+
+## Deployment Branches
+
+- `dev` branch deployments update the dev service within the shared cluster
+- `qa` branch deployments update the qa service within the shared cluster
+
+## API Endpoints
+
+- Development API: `https://{api-gateway-url}/dev/`
+- QA API: `https://{api-gateway-url}/qa/`
+
+## Infrastructure Management
+
+All infrastructure is managed as code using Terraform. The Terraform configuration is organized into modules:
+
+- `ecs`: Manages the ECS cluster, services, and task definitions
+- `api_gateway`: Manages the API Gateway with dev and qa stages
+- `alb`: Manages Application Load Balancers
+- `nlb`: Manages Network Load Balancers
+- `ecr`: Manages ECR repositories
+- `security`: Manages security groups
+- `cloudwatch`: Manages CloudWatch logs
 
 ## Prerequisites
 - AWS CLI configured with proper credentials
@@ -99,15 +149,6 @@ The deployment is configured to use the RDS instance:
 - Default Password: Password1
 
 You should update the password immediately after accessing the database.
-
-## CI/CD Pipeline
-
-The project includes a GitHub Actions workflow for CI/CD. The workflow:
-1. Provisions infrastructure using Terraform
-2. Builds and deploys the application to ECS
-3. Uses environment variables to configure Terraform
-
-The subnet IDs and other configuration parameters are specified as environment variables in the workflow file, so there's no need to commit sensitive files like `terraform.tfvars`.
 
 ## Architecture Diagram
 

@@ -16,11 +16,14 @@ env:
   TF_VAR_availability_zones: '["ap-south-1a", "ap-south-1b", "ap-south-1c"]'
   TF_VAR_use_existing_resources: "true"
   TF_VAR_resource_name_prefix: "rizzlers-tf-dev"
+  # Project name without environment for shared resources
+  TF_VAR_project_name: "rizzlers"
   # Subnet IDs from KDU-25-VPC in ap-south-1
   TF_VAR_public_subnet_ids: '["subnet-0b6ce2e699142888b", "subnet-04648c3dd5600df55", "subnet-0600d671cd9103ccc"]'
   TF_VAR_private_subnet_ids: '["subnet-0b31fd91378b4e19c", "subnet-0799d7919a2b9f1e5", "subnet-0185b2ce809770610"]'
-  # Hardcoded ECS resource names based on resource_name_prefix pattern
-  ECS_CLUSTER: "rizzlers-tf-dev-cluster"
+  # Hardcoded shared ECS cluster name
+  ECS_CLUSTER: "rizzlers-cluster"
+  # Environment-specific ECS service name
   ECS_SERVICE: "rizzlers-tf-dev-service"
   ECS_TASK_DEFINITION: "rizzlers-tf-dev-task"
   # Hardcoded ECR repository name

@@ -5,7 +5,7 @@ variable "aws_region" {
 }
 
 variable "project_name" {
-  description = "Project name"
+  description = "The name of the project, used for shared resources across environments"
   type        = string
   default     = "rizzlers"
 }
