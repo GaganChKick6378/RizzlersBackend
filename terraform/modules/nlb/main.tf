@@ -1,5 +1,5 @@
 resource "aws_lb" "nlb" {
-  name               = "${var.name_prefix}-nlb"
+  name               = "${var.name_prefix}-nlb-v2"
   internal           = false
   load_balancer_type = "network"
   subnets            = var.subnets
@@ -16,7 +16,7 @@ resource "aws_lb" "nlb" {
 
 # Target group for ALB
 resource "aws_lb_target_group" "alb_target_group" {
-  name        = "${var.name_prefix}-alb-tg"
+  name        = "${var.name_prefix}-alb-tg-v2"
   port        = var.target_port
   protocol    = "TCP"
   vpc_id      = var.vpc_id
@@ -26,9 +26,12 @@ resource "aws_lb_target_group" "alb_target_group" {
     enabled             = true
     interval            = 30
     port                = "traffic-port"
-    protocol            = "TCP"
+    protocol            = "HTTP"
+    path                = "/"
     healthy_threshold   = 3
     unhealthy_threshold = 3
+    timeout             = 5
+    matcher             = "200-399"
   }
 
   tags = merge(
