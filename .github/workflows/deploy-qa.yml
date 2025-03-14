@@ -16,20 +16,24 @@ env:
   TF_VAR_vpc_name: KDU-25-VPC
   TF_VAR_availability_zones: '["ap-south-1a", "ap-south-1b", "ap-south-1c"]'
   TF_VAR_use_existing_resources: "true"
-  TF_VAR_resource_name_prefix: "rizzlers-tf-qa"
-  # Subnet IDs from KDU-25-VPC in ap-south-1
-  TF_VAR_public_subnet_ids: '["subnet-0b6ce2e699142888b", "subnet-04648c3dd5600df55", "subnet-0600d671cd9103ccc"]'
-  TF_VAR_private_subnet_ids: '["subnet-0b31fd91378b4e19c", "subnet-0799d7919a2b9f1e5", "subnet-0185b2ce809770610"]'
-  # Hardcoded ECS resource names based on resource_name_prefix pattern
-  ECS_CLUSTER: "rizzlers-tf-qa-cluster"
+  # Use a shared resource prefix for common infrastructure
+  TF_VAR_resource_name_prefix: "rizzlers-tf"
+  # Use environment-specific names for services
+  ECS_CLUSTER: "rizzlers-tf-cluster"
   ECS_SERVICE: "rizzlers-tf-qa-service"
   ECS_TASK_DEFINITION: "rizzlers-tf-qa-task"
-  # Hardcoded ECR repository name
+  # Use environment-specific ECR repository
   ECR_REPOSITORY_NAME: "rizzlers-tf-qa"
   # QA specific database configuration
   TF_VAR_database_url: "jdbc:postgresql://ibe2025-kdu25rdsinstance61f66da9-8harocvoxzt8.c3ysg6m2290x.ap-south-1.rds.amazonaws.com:5432/Database_10_qa"
   TF_VAR_database_username: "Team_10"
   TF_VAR_database_password: "Password10"
+  # Shared infrastructure flags
+  TF_VAR_create_shared_infrastructure: "false"
+  # If false, will only create/update environment-specific resources
+  TF_VAR_create_api_gateway: "false"
+  TF_VAR_create_cluster: "false"
+  TF_VAR_api_gateway_name: "rizzlers-tf-api"
 
 # Note: To enable manual approval, create a GitHub environment in your repository settings:
 # 1. 'qa-environment' - For approving the entire QA deployment process
@@ -143,22 +147,22 @@ jobs:
           # Try to import resources that might already exist
           # Security Group for API Gateway VPC Link
           VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=${{ env.TF_VAR_vpc_name }}" --query "Vpcs[0].VpcId" --output text)
-          SG_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=rizzlers-tf-qa-vpce-sg" "Name=vpc-id,Values=$VPC_ID" --query "SecurityGroups[0].GroupId" --output text || echo "")
+          SG_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=rizzlers-tf-vpce-sg" "Name=vpc-id,Values=$VPC_ID" --query "SecurityGroups[0].GroupId" --output text || echo "")
           if [ -n "$SG_ID" ]; then
             try_import "module.api_gateway.aws_security_group.vpce_sg" "$SG_ID"
           fi
           
           # CloudWatch Log Groups
-          try_import "module.api_gateway.aws_cloudwatch_log_group.api_logs" "/aws/apigateway/rizzlers-tf-qa-api"
-          try_import "module.cloudwatch.aws_cloudwatch_log_group.app_logs" "/aws/rizzlers-tf-qa/application"
+          try_import "module.api_gateway.aws_cloudwatch_log_group.api_logs" "/aws/apigateway/rizzlers-tf-api"
+          try_import "module.cloudwatch.aws_cloudwatch_log_group.app_logs" "/aws/rizzlers-tf/application"
           
           # NLB and Target Group
-          NLB_ARN=$(aws elbv2 describe-load-balancers --name rizzlers-tf-qa-nlb --query "LoadBalancers[0].LoadBalancerArn" --output text || echo "")
+          NLB_ARN=$(aws elbv2 describe-load-balancers --name rizzlers-tf-nlb --query "LoadBalancers[0].LoadBalancerArn" --output text || echo "")
           if [ -n "$NLB_ARN" ]; then
             try_import "module.nlb.aws_lb.nlb" "$NLB_ARN"
           fi
           
-          TG_ARN=$(aws elbv2 describe-target-groups --name rizzlers-tf-qa-nlb-tg --query "TargetGroups[0].TargetGroupArn" --output text || echo "")
+          TG_ARN=$(aws elbv2 describe-target-groups --name rizzlers-tf-nlb-tg --query "TargetGroups[0].TargetGroupArn" --output text || echo "")
           if [ -n "$TG_ARN" ]; then
             try_import "module.nlb.aws_lb_target_group.nlb_tg" "$TG_ARN"
           fi
@@ -173,25 +177,39 @@ jobs:
           # Set TF_CLI_ARGS to ignore certain errors during apply
           export TF_CLI_ARGS_apply="-parallelism=1 -refresh=true"
           
-          # First attempt: Try to apply with error handling
-          terraform apply -auto-approve -var="environment=qa" || echo "Ignoring initial apply errors"
+          # Focus only on environment-specific resources since shared infrastructure already exists
+          echo "Creating/updating QA-specific resources only..."
           
-          # Try to apply the ECS and ECR resources which are the most important
-          echo "Targeting critical resources..."
+          # Focus on the ECS task definition and service for QA
+          echo "Creating ECS task definition for QA..."
           terraform apply -auto-approve -var="environment=qa" \
-            -target=module.ecr \
-            -target=module.ecs || echo "Ignoring errors for core resources"
+            -target=module.ecs.aws_ecs_task_definition.app_task || echo "Task definition creation had issues"
           
-          # Create the ECS service which depends on other resources
-          echo "Applying ECS service..."
+          # Create QA-specific ECR repository
+          echo "Creating ECR repository for QA..."
           terraform apply -auto-approve -var="environment=qa" \
-            -target=module.ecs.aws_ecs_service.app_service || echo "Ignoring ECS service errors"
+            -target=module.ecr.aws_ecr_repository.app || echo "ECR repository creation had issues"
           
-          # Final apply to ensure configuration is settled
-          echo "Running final apply to ensure all valid resources are updated..."
-          terraform apply -auto-approve -var="environment=qa" || echo "Completed with some resources possibly skipped"
+          # Create the QA service in the existing cluster
+          echo "Creating ECS service for QA..."
+          terraform apply -auto-approve -var="environment=qa" \
+            -target=module.ecs.aws_ecs_service.app_service || echo "ECS service creation had issues"
           
-          # Always exit successfully to continue the workflow
+          # Handle API Gateway stage for QA
+          echo "Creating API Gateway QA stage..."
+          terraform apply -auto-approve -var="environment=qa" \
+            -target=module.api_gateway.aws_api_gateway_stage.qa || echo "API Gateway stage creation had issues"
+            
+          # Create QA-specific CloudWatch resources
+          echo "Creating CloudWatch resources for QA..."
+          terraform apply -auto-approve -var="environment=qa" \
+            -target=module.cloudwatch.aws_cloudwatch_log_group.app_logs || echo "CloudWatch resource creation had issues"
+          
+          # Link all resources together - final targeted apply
+          echo "Linking resources together..."
+          terraform apply -auto-approve -var="environment=qa" || echo "Some resources may have been skipped"
+          
+          # Always exit successfully
           exit 0
 
       - name: Terraform Output to File
@@ -345,27 +363,79 @@ jobs:
       - name: Check API Gateway QA stage
         run: |
           echo "Verifying the API Gateway QA stage..."
-          # Attempt to find API Gateway REST API with tag Name=Rizzlers-ApiGateway-QaStage or similar
-          # Use a safer approach to handle multiple API IDs
-          API_IDS=($(aws apigateway get-rest-apis --query "items[?contains(name, 'rizzlers')].id" --output text))
+          # Find the single shared API Gateway
+          API_ID=$(aws apigateway get-rest-apis --query "items[?name=='${{ env.TF_VAR_api_gateway_name }}'].id" --output text || echo "")
           
-          if [ ${#API_IDS[@]} -gt 0 ]; then
-            echo "Found ${#API_IDS[@]} API Gateway(s)"
+          if [ -n "$API_ID" ]; then
+            echo "Found shared API Gateway with ID: $API_ID"
             
-            # Loop through each API ID and check for the QA stage
-            for API_ID in "${API_IDS[@]}"; do
-              echo "Checking API Gateway with ID: $API_ID"
-              
-              # Check if QA stage exists for this API
-              QA_STAGE=$(aws apigateway get-stages --rest-api-id "$API_ID" --query "item[?stageName=='qa'].stageName" --output text || echo "")
-              
-              if [ -n "$QA_STAGE" ]; then
-                echo "✅ QA stage exists for API $API_ID"
-                echo "API Gateway QA endpoint: https://$API_ID.execute-api.${{ env.AWS_REGION }}.amazonaws.com/qa/"
-              else
-                echo "❌ QA stage doesn't exist for API $API_ID"
-              fi
-            done
+            # Check if QA stage exists for this API
+            QA_STAGE=$(aws apigateway get-stages --rest-api-id "$API_ID" --query "item[?stageName=='qa'].stageName" --output text || echo "")
+            
+            if [ -n "$QA_STAGE" ]; then
+              echo "✅ QA stage exists in the shared API Gateway"
+              echo "API Gateway QA endpoint: https://$API_ID.execute-api.${{ env.AWS_REGION }}.amazonaws.com/qa/"
+            else
+              echo "❌ QA stage doesn't exist in the shared API Gateway"
+              echo "The stage may need to be manually created with name 'qa'"
+            fi
           else
-            echo "No API Gateway found with 'rizzlers' in the name. This should be created by Terraform."
+            echo "Shared API Gateway '${{ env.TF_VAR_api_gateway_name }}' not found."
+            echo "Checking for any API Gateway with 'rizzlers' in the name..."
+            
+            API_IDS=($(aws apigateway get-rest-apis --query "items[?contains(name, 'rizzlers')].id" --output text))
+            
+            if [ ${#API_IDS[@]} -gt 0 ]; then
+              echo "Found ${#API_IDS[@]} API Gateway(s)"
+              
+              # Loop through each API ID and check for the QA stage
+              for API_ID in "${API_IDS[@]}"; do
+                echo "Checking API Gateway with ID: $API_ID"
+                
+                # Check if QA stage exists for this API
+                QA_STAGE=$(aws apigateway get-stages --rest-api-id "$API_ID" --query "item[?stageName=='qa'].stageName" --output text || echo "")
+                
+                if [ -n "$QA_STAGE" ]; then
+                  echo "✅ QA stage exists for API $API_ID"
+                  echo "API Gateway QA endpoint: https://$API_ID.execute-api.${{ env.AWS_REGION }}.amazonaws.com/qa/"
+                else
+                  echo "❌ QA stage doesn't exist for API $API_ID"
+                fi
+              done
+            else
+              echo "No API Gateway found with 'rizzlers' in the name."
+            fi
+          fi
+
+      - name: Verify ECS Cluster and QA Service
+        run: |
+          echo "Verifying ECS Cluster and QA Service..."
+          
+          # Check if the shared ECS cluster exists
+          CLUSTER_EXISTS=$(aws ecs describe-clusters --clusters ${{ env.ECS_CLUSTER }} --query "clusters[0].clusterName" --output text || echo "")
+          
+          if [[ "$CLUSTER_EXISTS" == "${{ env.ECS_CLUSTER }}" ]]; then
+            echo "✅ Shared ECS Cluster exists: ${{ env.ECS_CLUSTER }}"
+            
+            # Check if the QA service exists
+            SERVICE_EXISTS=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query "services[0].serviceName" --output text || echo "")
+            
+            if [[ "$SERVICE_EXISTS" == "${{ env.ECS_SERVICE }}" ]]; then
+              echo "✅ QA Service exists in the shared cluster"
+              
+              # Get service status
+              SERVICE_STATUS=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query "services[0].status" --output text)
+              DESIRED_COUNT=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query "services[0].desiredCount" --output text)
+              RUNNING_COUNT=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query "services[0].runningCount" --output text)
+              
+              echo "Service Status: $SERVICE_STATUS"
+              echo "Desired Tasks: $DESIRED_COUNT"
+              echo "Running Tasks: $RUNNING_COUNT"
+            else
+              echo "❌ QA Service does not exist in the shared cluster"
+              echo "The service may need to be manually created with name '${{ env.ECS_SERVICE }}'"
+            fi
+          else
+            echo "❌ Shared ECS Cluster not found: ${{ env.ECS_CLUSTER }}"
+            echo "The cluster may need to be manually created with name '${{ env.ECS_CLUSTER }}'"
           fi 
