@@ -346,19 +346,26 @@ jobs:
         run: |
           echo "Verifying the API Gateway QA stage..."
           # Attempt to find API Gateway REST API with tag Name=Rizzlers-ApiGateway-QaStage or similar
-          API_ID=$(aws apigateway get-rest-apis --query "items[?contains(name, 'rizzlers')].id" --output text)
+          # Use a safer approach to handle multiple API IDs
+          API_IDS=($(aws apigateway get-rest-apis --query "items[?contains(name, 'rizzlers')].id" --output text))
           
-          if [ -n "$API_ID" ]; then
-            echo "Found API Gateway with ID: $API_ID"
+          if [ ${#API_IDS[@]} -gt 0 ]; then
+            echo "Found ${#API_IDS[@]} API Gateway(s)"
             
-            # Check if QA stage exists
-            QA_STAGE=$(aws apigateway get-stages --rest-api-id $API_ID --query "item[?stageName=='qa'].stageName" --output text)
-            
-            if [ -n "$QA_STAGE" ]; then
-              echo "QA stage exists. API Gateway QA endpoint: https://$API_ID.execute-api.${{ env.AWS_REGION }}.amazonaws.com/qa/"
-            else
-              echo "QA stage doesn't exist. This should be created by Terraform."
-            fi
+            # Loop through each API ID and check for the QA stage
+            for API_ID in "${API_IDS[@]}"; do
+              echo "Checking API Gateway with ID: $API_ID"
+              
+              # Check if QA stage exists for this API
+              QA_STAGE=$(aws apigateway get-stages --rest-api-id "$API_ID" --query "item[?stageName=='qa'].stageName" --output text || echo "")
+              
+              if [ -n "$QA_STAGE" ]; then
+                echo "✅ QA stage exists for API $API_ID"
+                echo "API Gateway QA endpoint: https://$API_ID.execute-api.${{ env.AWS_REGION }}.amazonaws.com/qa/"
+              else
+                echo "❌ QA stage doesn't exist for API $API_ID"
+              fi
+            done
           else
-            echo "API Gateway not found. This should be created by Terraform."
+            echo "No API Gateway found with 'rizzlers' in the name. This should be created by Terraform."
           fi 
