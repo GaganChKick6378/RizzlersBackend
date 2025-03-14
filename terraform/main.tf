@@ -93,6 +93,7 @@ module "api_gateway" {
   source       = "./modules/api_gateway"
   project_name = var.project_name
   environment  = var.environment
+  aws_region   = var.aws_region
   load_balancer_dns = module.alb.alb_dns_name
   load_balancer_listener_arn = module.alb.http_listener_arn
   nlb_arn      = module.nlb.nlb_arn

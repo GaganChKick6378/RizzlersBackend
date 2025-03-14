@@ -62,7 +62,7 @@ resource "aws_api_gateway_method" "proxy_method" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
   resource_id   = aws_api_gateway_resource.proxy.id
   http_method   = "ANY"
-  authorization_type = "NONE" # No authorization for now as per requirement
+  authorization = "NONE" # No authorization for now as per requirement
 }
 
 # Integration with Load Balancer
@@ -87,7 +87,7 @@ resource "aws_api_gateway_method" "root_method" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
   resource_id   = aws_api_gateway_rest_api.api.root_resource_id
   http_method   = "ANY"
-  authorization_type = "NONE"
+  authorization = "NONE"
 }
 
 resource "aws_api_gateway_integration" "root_integration" {
@@ -107,7 +107,7 @@ resource "aws_api_gateway_method" "proxy_options" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
   resource_id   = aws_api_gateway_resource.proxy.id
   http_method   = "OPTIONS"
-  authorization_type = "NONE"
+  authorization = "NONE"
 }
 
 resource "aws_api_gateway_method_response" "proxy_options_response" {
