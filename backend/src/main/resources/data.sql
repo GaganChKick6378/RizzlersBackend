@@ -1,10 +1,8 @@
--- Clean up existing data (use IF EXISTS for H2 compatibility)
-DELETE FROM students WHERE 1=1;
+-- Delete existing data to avoid duplicate keys during re-initialization
+DELETE FROM students;
 
--- Reset the sequence in a database-agnostic way
--- H2 doesn't use the same sequence syntax as PostgreSQL
--- So we'll skip this for H2 compatibility
--- ALTER SEQUENCE students_id_seq RESTART WITH 1;
+-- Reset the sequence to ensure IDs start from 1
+ALTER SEQUENCE students_id_seq RESTART WITH 1;
 
 -- Sample student data for Computer Science department
 INSERT INTO students (first_name, last_name, email, enrollment_number, year_of_study, cgpa, department, date_of_birth, mobile_number, address, created_at, updated_at, is_active)
