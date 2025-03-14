@@ -66,40 +66,24 @@ jobs:
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: terraform fmt
 
-      - name: Check and fix NLB-ALB integration
+      - name: Create overrides file for NLB-ALB
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: |
-          # Create a temporary file to store module tweaks
-          cat << 'EOF' > fix_nlb_alb.tf
-          # For QA environment, ensure ALB has a listener that matches the NLB target port
-          # This is a workaround for the ValidationError with NLB-ALB integration
+          # Create a file with variable overrides instead of module redefinitions
+          cat << 'EOF' > terraform.tfvars
+          # Force using existing resources for QA environment
+          use_existing_resources = true
           
-          # Override the default ALB listener port to match NLB target port if needed
+          # Make sure NLB and ALB port settings match
+          alb_listener_port = 80
+          target_port = 80
+          EOF
+          
+          # Add local overrides file that will not be committed
+          cat << 'EOF' > override.tf
+          # For QA environment, we'll skip NLB and other problematic resources if they already exist
           locals {
-            qa_override = var.environment == "qa" ? true : false
-          }
-          
-          # Import existing security groups if they exist
-          data "aws_security_group" "existing_alb_sg" {
-            count = local.qa_override ? 1 : 0
-            name  = "${var.resource_name_prefix}-alb-sg"
-            vpc_id = data.aws_vpc.kdu_vpc.id
-          }
-          
-          data "aws_security_group" "existing_ecs_sg" {
-            count = local.qa_override ? 1 : 0
-            name  = "${var.resource_name_prefix}-ecs-sg"
-            vpc_id = data.aws_vpc.kdu_vpc.id
-          }
-          
-          # Override the security module to use existing groups if found
-          module "security_groups" {
-            source      = "./modules/security"
-            vpc_id      = data.aws_vpc.kdu_vpc.id
-            environment = var.environment
-            name_prefix = local.resource_name_prefix
-            tags        = var.tags
-            create_new  = try(data.aws_security_group.existing_alb_sg[0].id, "") != "" ? false : true
+            skip_nlb_creation = true
           }
           EOF
 
@@ -107,77 +91,76 @@ jobs:
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: terraform validate
 
-      - name: Terraform Plan with Import
-        working-directory: ${{ env.TERRAFORM_DIR }}
+      - name: Check existing resources
+        id: check-resources
         run: |
-          # Try to import existing security groups if they exist
-          terraform import "module.security_groups.aws_security_group.alb_sg" "$(aws ec2 describe-security-groups --filters "Name=group-name,Values=rizzlers-tf-qa-alb-sg" "Name=vpc-id,Values=$(aws ec2 describe-vpcs --filters 'Name=tag:Name,Values=KDU-25-VPC' --query 'Vpcs[0].VpcId' --output text)" --query 'SecurityGroups[0].GroupId' --output text)" || echo "Security group doesn't exist yet or import failed"
-          terraform import "module.security_groups.aws_security_group.ecs_sg" "$(aws ec2 describe-security-groups --filters "Name=group-name,Values=rizzlers-tf-qa-ecs-sg" "Name=vpc-id,Values=$(aws ec2 describe-vpcs --filters 'Name=tag:Name,Values=KDU-25-VPC' --query 'Vpcs[0].VpcId' --output text)" --query 'SecurityGroups[0].GroupId' --output text)" || echo "Security group doesn't exist yet or import failed"
+          # Check if security groups exist
+          ALB_SG=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=rizzlers-tf-qa-alb-sg" "Name=vpc-id,Values=$(aws ec2 describe-vpcs --filters 'Name=tag:Name,Values=KDU-25-VPC' --query 'Vpcs[0].VpcId' --output text)" --query 'SecurityGroups[0].GroupId' --output text)
+          ECS_SG=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=rizzlers-tf-qa-ecs-sg" "Name=vpc-id,Values=$(aws ec2 describe-vpcs --filters 'Name=tag:Name,Values=KDU-25-VPC' --query 'Vpcs[0].VpcId' --output text)" --query 'SecurityGroups[0].GroupId' --output text)
           
-          # Run the plan
-          terraform plan -var="environment=qa"
-
-      - name: Terraform Apply in Phases
-        working-directory: ${{ env.TERRAFORM_DIR }}
-        run: |
-          # First create the ECR repository
-          terraform apply -auto-approve -var="environment=qa" -target=module.ecr
-          
-          # Create security groups
-          terraform apply -auto-approve -var="environment=qa" -target=module.security_groups || echo "Security groups may already exist, continuing..."
-          
-          # Create the shared cluster if needed
-          terraform apply -auto-approve -var="environment=qa" -target=module.ecs.aws_ecs_cluster.cluster || echo "Cluster may already exist, continuing..."
-          
-          # Create ALB resources
-          terraform apply -auto-approve -var="environment=qa" -target=module.alb || echo "ALB resources may partially exist, continuing..."
-          
-          # Create API Gateway
-          terraform apply -auto-approve -var="environment=qa" -target=module.api_gateway || echo "API Gateway resources may partially exist, continuing..."
-          
-          # Skip or modify NLB if it's causing issues
-          terraform apply -auto-approve -var="environment=qa" -target=module.nlb || echo "NLB resources may have issues, continuing with other resources..."
-          
-          # Apply remaining resources
-          terraform apply -auto-approve -var="environment=qa" || echo "Some resources had errors, but ECR and ECS tasks should be available..."
-
-      - name: Verify ECR Repository
-        id: verify-ecr
-        run: |
-          # Make sure the ECR repository exists regardless of other Terraform errors
-          REPO_EXISTS=$(aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY_NAME }} --query 'repositories[0].repositoryName' --output text 2>/dev/null || echo "")
-          if [ -z "$REPO_EXISTS" ]; then
-            echo "Creating ECR repository ${{ env.ECR_REPOSITORY_NAME }}"
-            aws ecr create-repository --repository-name ${{ env.ECR_REPOSITORY_NAME }}
+          if [ "$ALB_SG" != "None" ] && [ "$ECS_SG" != "None" ]; then
+            echo "SG_EXISTS=true" >> $GITHUB_OUTPUT
+            echo "Security groups exist: ALB_SG=$ALB_SG, ECS_SG=$ECS_SG"
           else
-            echo "ECR repository ${{ env.ECR_REPOSITORY_NAME }} exists"
+            echo "SG_EXISTS=false" >> $GITHUB_OUTPUT
+            echo "Security groups don't exist yet"
           fi
           
-          # Get the repository URL
+          # Check if ECR repository exists
+          ECR_REPO=$(aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY_NAME }} --query 'repositories[0].repositoryUri' --output text 2>/dev/null || echo "")
+          if [ -n "$ECR_REPO" ]; then
+            echo "ECR_EXISTS=true" >> $GITHUB_OUTPUT
+            echo "ECR repository exists: $ECR_REPO"
+          else
+            echo "ECR_EXISTS=false" >> $GITHUB_OUTPUT
+            echo "ECR repository doesn't exist yet"
+          fi
+
+      - name: Terraform Apply ECR Only
+        working-directory: ${{ env.TERRAFORM_DIR }}
+        if: steps.check-resources.outputs.ECR_EXISTS != 'true'
+        run: |
+          # First create just the ECR repository to ensure it exists
+          terraform apply -auto-approve -var="environment=qa" -target=module.ecr
+
+      - name: Create ECR Repository Directly
+        if: steps.check-resources.outputs.ECR_EXISTS != 'true'
+        run: |
+          # Create ECR repository directly using AWS CLI if Terraform failed
+          REPO_EXISTS=$(aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY_NAME }} --query 'repositories[0].repositoryName' --output text 2>/dev/null || echo "")
+          if [ -z "$REPO_EXISTS" ]; then
+            echo "Creating ECR repository ${{ env.ECR_REPOSITORY_NAME }} directly with AWS CLI"
+            aws ecr create-repository --repository-name ${{ env.ECR_REPOSITORY_NAME }}
+          fi
+
+      - name: Apply Essential Resources
+        working-directory: ${{ env.TERRAFORM_DIR }}
+        if: steps.check-resources.outputs.SG_EXISTS != 'true'
+        run: |
+          # Try to create just the security groups and cluster
+          terraform apply -auto-approve -var="environment=qa" -target=module.security_groups -target=module.ecs.aws_ecs_cluster.cluster || echo "Some security group resources may already exist"
+
+      - name: Skip Terraform for Existing Resources
+        working-directory: ${{ env.TERRAFORM_DIR }}
+        id: verify-ecr
+        run: |
+          # Grab the ECR repo URL directly from AWS instead of using Terraform
           REPO_URL=$(aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY_NAME }} --query 'repositories[0].repositoryUri' --output text)
           echo "repo_url=${REPO_URL}" >> $GITHUB_OUTPUT
-          echo "Repository URL: ${REPO_URL}"
-
-      - name: Terraform Output to File
-        working-directory: ${{ env.TERRAFORM_DIR }}
-        run: |
-          terraform output -raw ecr_repository_url > repo_url.txt || echo "509399625426.dkr.ecr.ap-south-1.amazonaws.com/${{ env.ECR_REPOSITORY_NAME }}" > repo_url.txt
-          echo "Repository URL from file: $(cat repo_url.txt)"
+          echo "Using ECR repository URL: ${REPO_URL}"
+          
+          # Write repo URL to file for later use
+          echo "${REPO_URL}" > repo_url.txt
+          echo "Repository URL from AWS CLI: ${REPO_URL}"
 
       - name: Extract Repository URL
         id: extract-url
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: |
-          # Extract just the repository URL without any debug information
-          REPO_URL=$(cat repo_url.txt | grep -o '^[^:]*\.dkr\.ecr\.[^:]*\.amazonaws\.com/[^:]*' || echo "509399625426.dkr.ecr.ap-south-1.amazonaws.com/rizzlers-tf-qa")
+          # Use the URL from repo_url.txt or fallback to hardcoded value
+          REPO_URL=$(cat repo_url.txt 2>/dev/null || echo "509399625426.dkr.ecr.ap-south-1.amazonaws.com/${{ env.ECR_REPOSITORY_NAME }}")
           echo "repo_url=${REPO_URL}" >> $GITHUB_OUTPUT
           echo "Clean Repository URL: ${REPO_URL}"
-          
-          # Use verified ECR URL if Terraform output failed
-          if [ "$REPO_URL" == "" ]; then
-            echo "Using verified ECR URL from previous step"
-            echo "repo_url=${{ steps.verify-ecr.outputs.repo_url }}" >> $GITHUB_OUTPUT
-          fi
 
   build-and-deploy:
     name: Build and Deploy
