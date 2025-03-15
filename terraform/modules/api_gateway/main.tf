@@ -42,11 +42,24 @@ data "aws_api_gateway_resource" "root_resource" {
   path        = "/"
 }
 
+# Get the proxy resource if it exists
+data "aws_api_gateway_resource" "proxy_resource" {
+  count       = var.use_existing_resources && local.api_exists ? 1 : 0
+  rest_api_id = local.rest_api_id
+  path        = "/{proxy+}"
+}
+
 locals {
   # Get the root resource ID for the API Gateway
   # For a new API Gateway, this is the same as the rest_api_id
   # For an existing API Gateway, we need to fetch it with the data source
   root_resource_id = var.use_existing_resources && local.api_exists && length(data.aws_api_gateway_resource.root_resource) > 0 ? data.aws_api_gateway_resource.root_resource[0].id : length(aws_api_gateway_rest_api.api) > 0 ? aws_api_gateway_rest_api.api[0].root_resource_id : ""
+  
+  # Calculate proxy resource ID
+  proxy_resource_id = var.use_existing_resources && local.api_exists && length(data.aws_api_gateway_resource.proxy_resource) > 0 ? data.aws_api_gateway_resource.proxy_resource[0].id : length(aws_api_gateway_resource.proxy) > 0 ? aws_api_gateway_resource.proxy[0].id : ""
+  
+  # Determine if proxy resource exists
+  proxy_exists = local.proxy_resource_id != ""
 }
 
 # Security group for VPC Link - with environment in name
@@ -86,9 +99,9 @@ resource "aws_api_gateway_vpc_link" "link" {
   )
 }
 
-# API resource for the proxy integration
+# API resource for the proxy integration - only create if it doesn't exist and we're not using existing resources
 resource "aws_api_gateway_resource" "proxy" {
-  count       = local.api_exists && local.root_resource_id != "" ? 1 : 0
+  count       = (!var.use_existing_resources) && local.api_exists && local.root_resource_id != "" ? 1 : 0
   rest_api_id = local.rest_api_id
   parent_id   = local.root_resource_id
   path_part   = "{proxy+}"
@@ -96,9 +109,9 @@ resource "aws_api_gateway_resource" "proxy" {
 
 # Setup a method for the proxy resource with ANY HTTP method
 resource "aws_api_gateway_method" "proxy_method" {
-  count         = local.api_exists && length(aws_api_gateway_resource.proxy) > 0 ? 1 : 0
+  count         = (!var.use_existing_resources) && local.api_exists && local.proxy_exists ? 1 : 0
   rest_api_id   = local.rest_api_id
-  resource_id   = aws_api_gateway_resource.proxy[0].id
+  resource_id   = local.proxy_resource_id
   http_method   = "ANY"
   authorization = "NONE" # No authorization for now as per requirement
   
@@ -110,10 +123,10 @@ resource "aws_api_gateway_method" "proxy_method" {
 
 # Integration with Load Balancer
 resource "aws_api_gateway_integration" "lb_integration" {
-  count                   = local.api_exists && length(aws_api_gateway_method.proxy_method) > 0 ? 1 : 0
+  count                   = local.api_exists && local.proxy_exists ? 1 : 0
   rest_api_id             = local.rest_api_id
-  resource_id             = aws_api_gateway_resource.proxy[0].id
-  http_method             = aws_api_gateway_method.proxy_method[0].http_method
+  resource_id             = local.proxy_resource_id
+  http_method             = "ANY"  # We know this method exists
   
   # HTTP_PROXY maintains original HTTP method
   type                    = "HTTP_PROXY"
@@ -136,9 +149,9 @@ resource "aws_api_gateway_integration" "lb_integration" {
   }
 }
 
-# Root path method and integration
+# Root path method and integration - only create if not using existing resources
 resource "aws_api_gateway_method" "root_method" {
-  count         = local.api_exists && local.root_resource_id != "" ? 1 : 0
+  count         = (!var.use_existing_resources) && local.api_exists && local.root_resource_id != "" ? 1 : 0
   rest_api_id   = local.rest_api_id
   resource_id   = local.root_resource_id
   http_method   = "ANY"
@@ -146,10 +159,10 @@ resource "aws_api_gateway_method" "root_method" {
 }
 
 resource "aws_api_gateway_integration" "root_integration" {
-  count         = local.api_exists && length(aws_api_gateway_method.root_method) > 0 ? 1 : 0
+  count         = local.api_exists && local.root_resource_id != "" ? 1 : 0
   rest_api_id   = local.rest_api_id
   resource_id   = local.root_resource_id
-  http_method   = aws_api_gateway_method.root_method[0].http_method
+  http_method   = "ANY"  # We know this method exists
   
   type                    = "HTTP_PROXY"
   integration_http_method = "ANY"
@@ -161,11 +174,12 @@ resource "aws_api_gateway_integration" "root_integration" {
   cache_key_parameters = []
 }
 
-# Enable CORS for the proxy resource
+# CORS is handled separately as it may not already exist
+# We'll only set this up for the proxy resource if it exists
 resource "aws_api_gateway_method" "proxy_options" {
-  count         = local.api_exists && length(aws_api_gateway_resource.proxy) > 0 ? 1 : 0
+  count         = local.api_exists && local.proxy_exists ? 1 : 0
   rest_api_id   = local.rest_api_id
-  resource_id   = aws_api_gateway_resource.proxy[0].id
+  resource_id   = local.proxy_resource_id
   http_method   = "OPTIONS"
   authorization = "NONE"
 }
@@ -173,7 +187,7 @@ resource "aws_api_gateway_method" "proxy_options" {
 resource "aws_api_gateway_method_response" "proxy_options_response" {
   count       = local.api_exists && length(aws_api_gateway_method.proxy_options) > 0 ? 1 : 0
   rest_api_id = local.rest_api_id
-  resource_id = aws_api_gateway_resource.proxy[0].id
+  resource_id = local.proxy_resource_id
   http_method = aws_api_gateway_method.proxy_options[0].http_method
   status_code = "200"
   
@@ -187,7 +201,7 @@ resource "aws_api_gateway_method_response" "proxy_options_response" {
 resource "aws_api_gateway_integration" "proxy_options_integration" {
   count       = local.api_exists && length(aws_api_gateway_method.proxy_options) > 0 ? 1 : 0
   rest_api_id = local.rest_api_id
-  resource_id = aws_api_gateway_resource.proxy[0].id
+  resource_id = local.proxy_resource_id
   http_method = aws_api_gateway_method.proxy_options[0].http_method
   type        = "MOCK"
   
@@ -199,7 +213,7 @@ resource "aws_api_gateway_integration" "proxy_options_integration" {
 resource "aws_api_gateway_integration_response" "proxy_options_integration_response" {
   count       = local.api_exists && length(aws_api_gateway_integration.proxy_options_integration) > 0 && length(aws_api_gateway_method_response.proxy_options_response) > 0 ? 1 : 0
   rest_api_id = local.rest_api_id
-  resource_id = aws_api_gateway_resource.proxy[0].id
+  resource_id = local.proxy_resource_id
   http_method = aws_api_gateway_method.proxy_options[0].http_method
   status_code = aws_api_gateway_method_response.proxy_options_response[0].status_code
   
@@ -212,7 +226,7 @@ resource "aws_api_gateway_integration_response" "proxy_options_integration_respo
 
 # Deployment and Stages
 resource "aws_api_gateway_deployment" "deployment" {
-  count       = local.api_exists && length(aws_api_gateway_integration.lb_integration) > 0 && length(aws_api_gateway_integration.root_integration) > 0 ? 1 : 0
+  count       = local.api_exists && local.proxy_exists && length(aws_api_gateway_integration.lb_integration) > 0 && length(aws_api_gateway_integration.root_integration) > 0 ? 1 : 0
   rest_api_id = local.rest_api_id
   
   depends_on = [
@@ -224,10 +238,9 @@ resource "aws_api_gateway_deployment" "deployment" {
   triggers = {
     # Add timestamp to ensure deployment happens on every apply
     redeployment = sha1(jsonencode([
-      length(aws_api_gateway_resource.proxy) > 0 ? aws_api_gateway_resource.proxy[0].id : "",
-      length(aws_api_gateway_method.proxy_method) > 0 ? aws_api_gateway_method.proxy_method[0].id : "",
+      local.proxy_resource_id,
+      local.root_resource_id,
       length(aws_api_gateway_integration.lb_integration) > 0 ? aws_api_gateway_integration.lb_integration[0].id : "",
-      length(aws_api_gateway_method.root_method) > 0 ? aws_api_gateway_method.root_method[0].id : "",
       length(aws_api_gateway_integration.root_integration) > 0 ? aws_api_gateway_integration.root_integration[0].id : "",
       timestamp()
     ]))
