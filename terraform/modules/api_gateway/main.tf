@@ -34,6 +34,23 @@ resource "aws_api_gateway_rest_api" "api" {
   )
 }
 
+# Get the root resource ID for the API Gateway
+# This is necessary when working with existing API Gateways
+data "aws_api_gateway_resource" "root_resource" {
+  count       = var.use_existing_resources && local.api_exists ? 1 : 0
+  rest_api_id = local.rest_api_id
+  path        = "/"
+}
+
+locals {
+  # Get the root resource ID for the API Gateway
+  # For a new API Gateway, this is the same as the rest_api_id
+  # For an existing API Gateway, we need to fetch it with the data source
+  root_resource_id = var.use_existing_resources && local.api_exists && length(data.aws_api_gateway_resource.root_resource) > 0 ? 
+                     data.aws_api_gateway_resource.root_resource[0].id : 
+                     length(aws_api_gateway_rest_api.api) > 0 ? aws_api_gateway_rest_api.api[0].root_resource_id : ""
+}
+
 # Security group for VPC Link - with environment in name
 resource "aws_security_group" "vpce_sg" {
   name        = local.sg_name
@@ -73,9 +90,9 @@ resource "aws_api_gateway_vpc_link" "link" {
 
 # API resource for the proxy integration
 resource "aws_api_gateway_resource" "proxy" {
-  count       = local.api_exists ? 1 : 0
+  count       = local.api_exists && local.root_resource_id != "" ? 1 : 0
   rest_api_id = local.rest_api_id
-  parent_id   = local.api_exists ? local.rest_api_id : ""
+  parent_id   = local.root_resource_id
   path_part   = "{proxy+}"
 }
 
@@ -123,9 +140,9 @@ resource "aws_api_gateway_integration" "lb_integration" {
 
 # Root path method and integration
 resource "aws_api_gateway_method" "root_method" {
-  count         = local.api_exists ? 1 : 0
+  count         = local.api_exists && local.root_resource_id != "" ? 1 : 0
   rest_api_id   = local.rest_api_id
-  resource_id   = local.api_exists ? local.rest_api_id : ""
+  resource_id   = local.root_resource_id
   http_method   = "ANY"
   authorization = "NONE"
 }
@@ -133,7 +150,7 @@ resource "aws_api_gateway_method" "root_method" {
 resource "aws_api_gateway_integration" "root_integration" {
   count         = local.api_exists && length(aws_api_gateway_method.root_method) > 0 ? 1 : 0
   rest_api_id   = local.rest_api_id
-  resource_id   = local.api_exists ? local.rest_api_id : ""
+  resource_id   = local.root_resource_id
   http_method   = aws_api_gateway_method.root_method[0].http_method
   
   type                    = "HTTP_PROXY"
