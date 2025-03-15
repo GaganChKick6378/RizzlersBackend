@@ -8,20 +8,9 @@ output "ecs_cluster_name" {
   value       = module.ecs.cluster_name
 }
 
-<<<<<<< HEAD
 output "ecs_service_name" {
   description = "Name of the ECS service for the current environment"
   value       = module.ecs.service_name
-=======
-output "ecs_dev_service_name" {
-  description = "Name of the ECS dev service"
-  value       = module.ecs.dev_service_name
-}
-
-output "ecs_qa_service_name" {
-  description = "Name of the ECS QA service"
-  value       = module.ecs.qa_service_name
->>>>>>> 6cb266d (pushing for QA env)
 }
 
 output "api_gateway_url" {
