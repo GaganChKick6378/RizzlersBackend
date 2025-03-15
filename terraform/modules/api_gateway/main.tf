@@ -46,9 +46,7 @@ locals {
   # Get the root resource ID for the API Gateway
   # For a new API Gateway, this is the same as the rest_api_id
   # For an existing API Gateway, we need to fetch it with the data source
-  root_resource_id = var.use_existing_resources && local.api_exists && length(data.aws_api_gateway_resource.root_resource) > 0 ? 
-                     data.aws_api_gateway_resource.root_resource[0].id : 
-                     length(aws_api_gateway_rest_api.api) > 0 ? aws_api_gateway_rest_api.api[0].root_resource_id : ""
+  root_resource_id = var.use_existing_resources && local.api_exists && length(data.aws_api_gateway_resource.root_resource) > 0 ? data.aws_api_gateway_resource.root_resource[0].id : length(aws_api_gateway_rest_api.api) > 0 ? aws_api_gateway_rest_api.api[0].root_resource_id : ""
 }
 
 # Security group for VPC Link - with environment in name
