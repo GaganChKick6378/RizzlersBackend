@@ -48,4 +48,10 @@ variable "tags" {
 variable "name_prefix" {
   description = "Prefix for resource names"
   type        = string
+}
+
+variable "use_existing_resources" {
+  description = "Whether to use existing resources instead of creating new ones"
+  type        = bool
+  default     = false
 } 

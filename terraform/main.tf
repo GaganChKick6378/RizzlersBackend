@@ -79,31 +79,33 @@ module "alb" {
 
 # Network Load Balancer for API Gateway
 module "nlb" {
-  source       = "./modules/nlb"
-  project_name = var.project_name
-  environment  = var.environment
-  vpc_id       = data.aws_vpc.kdu_vpc.id
-  subnets      = local.public_subnet_ids
-  alb_arn      = module.alb.alb_arn
-  target_port  = 80
-  listener_port = 80
-  tags         = var.tags
-  name_prefix  = local.resource_name_prefix
+  source             = "./modules/nlb"
+  project_name       = var.project_name
+  environment        = var.environment
+  vpc_id             = data.aws_vpc.kdu_vpc.id
+  subnets            = local.public_subnet_ids
+  alb_arn            = module.alb.alb_arn
+  target_port        = 80
+  listener_port      = 80
+  tags               = var.tags
+  name_prefix        = local.resource_name_prefix
+  load_balancer_listener_arn = module.alb.http_listener_arn
 }
 
 # API Gateway - using a single API Gateway with both dev and qa stages
 module "api_gateway" {
-  source       = "./modules/api_gateway"
-  project_name = var.project_name
-  environment  = var.environment  # Just used for naming resources
-  aws_region   = var.aws_region
-  load_balancer_dns = module.alb.alb_dns_name
+  source                    = "./modules/api_gateway"
+  project_name              = var.project_name
+  environment               = var.environment  # Just used for naming resources
+  aws_region                = var.aws_region
+  load_balancer_dns         = module.alb.alb_dns_name
   load_balancer_listener_arn = module.alb.http_listener_arn
-  nlb_arn      = module.nlb.nlb_arn
-  vpc_id       = data.aws_vpc.kdu_vpc.id
-  vpc_link_subnets = local.private_subnet_ids
-  tags         = var.tags
-  name_prefix  = "${var.project_name}"  # Remove environment suffix to make it shared
+  nlb_arn                   = module.nlb.nlb_arn
+  vpc_id                    = data.aws_vpc.kdu_vpc.id
+  vpc_link_subnets          = local.private_subnet_ids
+  tags                      = var.tags
+  name_prefix               = "${var.project_name}"  # Remove environment suffix to make it shared
+  use_existing_resources    = var.use_existing_resources
 }
 
 # CloudWatch Logs

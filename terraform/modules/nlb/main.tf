@@ -1,5 +1,5 @@
 resource "aws_lb" "nlb" {
-  name               = "${var.name_prefix}-nlb-v2"
+  name               = "${var.name_prefix}-nlb-${var.environment}"
   internal           = false
   load_balancer_type = "network"
   subnets            = var.subnets
@@ -14,9 +14,9 @@ resource "aws_lb" "nlb" {
   )
 }
 
-# Target group for ALB
+# Target group for ALB - Update to use HTTP protocol for health checks
 resource "aws_lb_target_group" "alb_target_group" {
-  name        = "${var.name_prefix}-alb-tg-v2"
+  name        = "${var.name_prefix}-alb-tg-${var.environment}"
   port        = var.target_port
   protocol    = "TCP"
   vpc_id      = var.vpc_id
@@ -42,11 +42,20 @@ resource "aws_lb_target_group" "alb_target_group" {
   )
 }
 
-# Attach the ALB to the target group
+# Only try to attach the ALB to the target group after we're sure the ALB has a listener
+# This is to prevent the "must have at least one listener" error
 resource "aws_lb_target_group_attachment" "alb_attachment" {
   target_group_arn = aws_lb_target_group.alb_target_group.arn
   target_id        = var.alb_arn
   port             = var.target_port
+
+  # Add depends_on to ensure the ALB listener exists before attempting the attachment
+  depends_on = [var.load_balancer_listener_arn]
+
+  # Add lifecycle ignore_changes to prevent Terraform from trying to recreate the attachment
+  lifecycle {
+    ignore_changes = [target_id]
+  }
 }
 
 # Listener for the NLB
