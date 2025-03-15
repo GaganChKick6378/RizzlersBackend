@@ -10,7 +10,7 @@ output "rest_api_id" {
 
 output "stage_name" {
   description = "Name of the environment stage"
-  value       = local.stage_exists ? data.aws_api_gateway_stage.existing_stage[0].stage_name : length(aws_api_gateway_stage.env_stage) > 0 ? aws_api_gateway_stage.env_stage[0].stage_name : var.environment
+  value       = local.stage_exists ? var.environment : length(aws_api_gateway_stage.env_stage) > 0 ? aws_api_gateway_stage.env_stage[0].stage_name : var.environment
 }
 
 output "stage_url" {

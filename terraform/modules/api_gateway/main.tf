@@ -49,13 +49,6 @@ data "aws_api_gateway_resource" "proxy_resource" {
   path        = "/{proxy+}"
 }
 
-# Check if the stage already exists
-data "aws_api_gateway_stage" "existing_stage" {
-  count = var.use_existing_resources && local.api_exists ? 1 : 0
-  rest_api_id = local.rest_api_id
-  stage_name  = var.environment
-}
-
 locals {
   # Get the root resource ID for the API Gateway
   # For a new API Gateway, this is the same as the rest_api_id
@@ -68,8 +61,8 @@ locals {
   # Determine if proxy resource exists
   proxy_exists = local.proxy_resource_id != ""
   
-  # Check if stage exists
-  stage_exists = var.use_existing_resources && local.api_exists && length(data.aws_api_gateway_stage.existing_stage) > 0
+  # Assume stage exists if we're using existing resources
+  stage_exists = var.use_existing_resources && local.api_exists
 }
 
 # Security group for VPC Link - with environment in name
