@@ -16,28 +16,22 @@ env:
   TF_VAR_availability_zones: '["ap-south-1a", "ap-south-1b", "ap-south-1c"]'
   TF_VAR_use_existing_resources: "true"
   TF_VAR_resource_name_prefix: "rizzlers-tf-qa"
+  # Project name without environment for shared resources
+  TF_VAR_project_name: "rizzlers"
   # Subnet IDs from KDU-25-VPC in ap-south-1
   TF_VAR_public_subnet_ids: '["subnet-0b6ce2e699142888b", "subnet-04648c3dd5600df55", "subnet-0600d671cd9103ccc"]'
   TF_VAR_private_subnet_ids: '["subnet-0b31fd91378b4e19c", "subnet-0799d7919a2b9f1e5", "subnet-0185b2ce809770610"]'
-  # Hardcoded ECS resource names based on resource_name_prefix pattern
-  ECS_CLUSTER: "rizzlers-tf-shared-cluster" # Using shared cluster
-  ECS_SERVICE: "rizzlers-tf-qa-service" # QA-specific service
-  ECS_TASK_DEFINITION: "rizzlers-tf-qa-task" # QA-specific task
+  # Hardcoded shared ECS cluster name
+  ECS_CLUSTER: "rizzlers-cluster"
+  # Environment-specific ECS service name
+  ECS_SERVICE: "rizzlers-tf-qa-service"
+  ECS_TASK_DEFINITION: "rizzlers-tf-qa-task"
   # Hardcoded ECR repository name
   ECR_REPOSITORY_NAME: "rizzlers-tf-qa"
 
 jobs:
-  approval:
-    name: Manual Approval
-    runs-on: ubuntu-latest
-    environment: qa-approval
-    steps:
-      - name: Manual approval check
-        run: echo "Deployment to QA environment approved!"
-
   terraform:
     name: Terraform
-    needs: approval
     runs-on: ubuntu-latest
     outputs:
       ecr_repository_url: ${{ steps.extract-url.outputs.repo_url }}
@@ -66,106 +60,43 @@ jobs:
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: terraform fmt
 
-      - name: Create overrides file for NLB-ALB
-        working-directory: ${{ env.TERRAFORM_DIR }}
-        run: |
-          # Create a file with variable overrides instead of module redefinitions
-          cat << 'EOF' > terraform.tfvars
-          # Force using existing resources for QA environment
-          use_existing_resources = true
-          
-          # Make sure NLB and ALB port settings match
-          alb_listener_port = 80
-          target_port = 80
-          EOF
-          
-          # Add local overrides file that will not be committed
-          cat << 'EOF' > override.tf
-          # For QA environment, we'll skip NLB and other problematic resources if they already exist
-          locals {
-            skip_nlb_creation = true
-          }
-          EOF
-
       - name: Terraform Validate
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: terraform validate
 
-      - name: Check existing resources
-        id: check-resources
-        run: |
-          # Check if security groups exist
-          ALB_SG=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=rizzlers-tf-qa-alb-sg" "Name=vpc-id,Values=$(aws ec2 describe-vpcs --filters 'Name=tag:Name,Values=KDU-25-VPC' --query 'Vpcs[0].VpcId' --output text)" --query 'SecurityGroups[0].GroupId' --output text)
-          ECS_SG=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=rizzlers-tf-qa-ecs-sg" "Name=vpc-id,Values=$(aws ec2 describe-vpcs --filters 'Name=tag:Name,Values=KDU-25-VPC' --query 'Vpcs[0].VpcId' --output text)" --query 'SecurityGroups[0].GroupId' --output text)
-          
-          if [ "$ALB_SG" != "None" ] && [ "$ECS_SG" != "None" ]; then
-            echo "SG_EXISTS=true" >> $GITHUB_OUTPUT
-            echo "Security groups exist: ALB_SG=$ALB_SG, ECS_SG=$ECS_SG"
-          else
-            echo "SG_EXISTS=false" >> $GITHUB_OUTPUT
-            echo "Security groups don't exist yet"
-          fi
-          
-          # Check if ECR repository exists
-          ECR_REPO=$(aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY_NAME }} --query 'repositories[0].repositoryUri' --output text 2>/dev/null || echo "")
-          if [ -n "$ECR_REPO" ]; then
-            echo "ECR_EXISTS=true" >> $GITHUB_OUTPUT
-            echo "ECR repository exists: $ECR_REPO"
-          else
-            echo "ECR_EXISTS=false" >> $GITHUB_OUTPUT
-            echo "ECR repository doesn't exist yet"
-          fi
-
-      - name: Terraform Apply ECR Only
+      - name: Terraform Plan
         working-directory: ${{ env.TERRAFORM_DIR }}
-        if: steps.check-resources.outputs.ECR_EXISTS != 'true'
-        run: |
-          # First create just the ECR repository to ensure it exists
-          terraform apply -auto-approve -var="environment=qa" -target=module.ecr
+        run: terraform plan -var="environment=qa"
 
-      - name: Create ECR Repository Directly
-        if: steps.check-resources.outputs.ECR_EXISTS != 'true'
-        run: |
-          # Create ECR repository directly using AWS CLI if Terraform failed
-          REPO_EXISTS=$(aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY_NAME }} --query 'repositories[0].repositoryName' --output text 2>/dev/null || echo "")
-          if [ -z "$REPO_EXISTS" ]; then
-            echo "Creating ECR repository ${{ env.ECR_REPOSITORY_NAME }} directly with AWS CLI"
-            aws ecr create-repository --repository-name ${{ env.ECR_REPOSITORY_NAME }}
-          fi
-
-      - name: Apply Essential Resources
+      - name: Terraform Apply
+        if: github.event_name == 'push'
         working-directory: ${{ env.TERRAFORM_DIR }}
-        if: steps.check-resources.outputs.SG_EXISTS != 'true'
-        run: |
-          # Try to create just the security groups and cluster
-          terraform apply -auto-approve -var="environment=qa" -target=module.security_groups -target=module.ecs.aws_ecs_cluster.cluster || echo "Some security group resources may already exist"
+        run: terraform apply -auto-approve -var="environment=qa"
 
-      - name: Skip Terraform for Existing Resources
+      - name: Terraform Output to File
+        if: github.event_name == 'push'
         working-directory: ${{ env.TERRAFORM_DIR }}
-        id: verify-ecr
         run: |
-          # Grab the ECR repo URL directly from AWS instead of using Terraform
-          REPO_URL=$(aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY_NAME }} --query 'repositories[0].repositoryUri' --output text)
-          echo "repo_url=${REPO_URL}" >> $GITHUB_OUTPUT
-          echo "Using ECR repository URL: ${REPO_URL}"
-          
-          # Write repo URL to file for later use
-          echo "${REPO_URL}" > repo_url.txt
-          echo "Repository URL from AWS CLI: ${REPO_URL}"
+          terraform output -raw ecr_repository_url > repo_url.txt
+          echo "Repository URL from file: $(cat repo_url.txt)"
 
       - name: Extract Repository URL
+        if: github.event_name == 'push'
         id: extract-url
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: |
-          # Use the URL from repo_url.txt or fallback to hardcoded value
-          REPO_URL=$(cat repo_url.txt 2>/dev/null || echo "509399625426.dkr.ecr.ap-south-1.amazonaws.com/${{ env.ECR_REPOSITORY_NAME }}")
+          # Extract just the repository URL without any debug information
+          REPO_URL=$(cat repo_url.txt | grep -o '^[^:]*\.dkr\.ecr\.[^:]*\.amazonaws\.com/[^:]*' || echo "509399625426.dkr.ecr.ap-south-1.amazonaws.com/rizzlers-tf-qa")
           echo "repo_url=${REPO_URL}" >> $GITHUB_OUTPUT
           echo "Clean Repository URL: ${REPO_URL}"
 
-  build-and-deploy:
-    name: Build and Deploy
+  build:
+    name: Build
     needs: terraform
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    outputs:
+      image_uri: ${{ steps.build-image.outputs.image_uri }}
 
     steps:
       - name: Checkout code
@@ -214,6 +145,7 @@ jobs:
           mvn clean package -DskipTests || mkdir -p target && touch target/app.jar
 
       - name: Build and push Docker image
+        id: build-image
         working-directory: backend
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -238,74 +170,42 @@ jobs:
           aws ecr describe-images --repository-name ${{ env.ECR_REPOSITORY_NAME }} --image-ids imageTag=latest
 
           # Save exact image URI for task definition update
-          echo "FULL_IMAGE_URI=${FULL_IMAGE_NAME}:latest" >> $GITHUB_ENV
+          FULL_IMAGE_URI="${FULL_IMAGE_NAME}:latest"
+          echo "image_uri=${FULL_IMAGE_URI}" >> $GITHUB_OUTPUT
+          echo "FULL_IMAGE_URI=${FULL_IMAGE_URI}" >> $GITHUB_ENV
 
-      - name: Check if ECS Service exists
-        id: check-ecs-service
+  approval:
+    name: Manual Approval
+    needs: build
+    runs-on: ubuntu-latest
+    environment: qa-approval
+    steps:
+      - name: Approval Step
         run: |
-          SERVICE_EXISTS=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query 'services[0].status' --output text 2>/dev/null || echo "MISSING")
-          echo "service_exists=$SERVICE_EXISTS" >> $GITHUB_OUTPUT
-          echo "ECS Service status: $SERVICE_EXISTS"
+          echo "Deployment to QA has been manually approved"
+
+  deploy:
+    name: Deploy
+    needs: [build, approval]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Check and update ECS task definition
+        env:
+          FULL_IMAGE_URI: ${{ needs.build.outputs.image_uri }}
         run: |
           # Get the current task definition
           TASK_DEF=$(aws ecs describe-task-definition --task-definition ${{ env.ECS_TASK_DEFINITION }} --query 'taskDefinition' 2>/dev/null || echo '{}')
 
           if [ "$TASK_DEF" = "{}" ]; then
-            echo "Task definition not found, creating a new one"
-            
-            # Create a basic task definition if one doesn't exist
-            cat << EOF > qa-task-def.json
-            {
-              "family": "${{ env.ECS_TASK_DEFINITION }}",
-              "executionRoleArn": "arn:aws:iam::509399625426:role/ecsTaskExecutionRole",
-              "networkMode": "awsvpc",
-              "containerDefinitions": [
-                {
-                  "name": "${{ env.ECS_TASK_DEFINITION }}-container",
-                  "image": "$FULL_IMAGE_URI",
-                  "essential": true,
-                  "portMappings": [
-                    {
-                      "containerPort": 8080,
-                      "hostPort": 8080,
-                      "protocol": "tcp"
-                    }
-                  ],
-                  "logConfiguration": {
-                    "logDriver": "awslogs",
-                    "options": {
-                      "awslogs-group": "/ecs/${{ env.ECS_TASK_DEFINITION }}",
-                      "awslogs-region": "${{ env.AWS_REGION }}",
-                      "awslogs-stream-prefix": "ecs",
-                      "awslogs-create-group": "true"
-                    }
-                  },
-                  "healthCheck": {
-                    "command": ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health || exit 1"],
-                    "interval": 30,
-                    "timeout": 5,
-                    "retries": 3,
-                    "startPeriod": 60
-                  },
-                  "environment": [
-                    {"name": "SPRING_PROFILES_ACTIVE", "value": "qa"},
-                    {"name": "SERVER_PORT", "value": "8080"},
-                    {"name": "SPRING_DATASOURCE_URL", "value": "jdbc:postgresql://database-kdu.czpwqpnfk9dp.ap-south-1.rds.amazonaws.com:5432/Database_10_qa"},
-                    {"name": "SPRING_DATASOURCE_USERNAME", "value": "Team_10"},
-                    {"name": "SPRING_DATASOURCE_PASSWORD", "value": "Password10"}
-                  ]
-                }
-              ],
-              "requiresCompatibilities": ["FARGATE"],
-              "cpu": "256",
-              "memory": "512"
-            }
-            EOF
-            
-            # Register the new task definition
-            aws ecs register-task-definition --cli-input-json file://qa-task-def.json
+            echo "Task definition not found, skipping update"
           else
             echo "Found task definition ${{ env.ECS_TASK_DEFINITION }}, checking container image..."
             
@@ -320,7 +220,7 @@ jobs:
             if [ "$CURRENT_IMAGE" != "$FULL_IMAGE_URI" ]; then
               echo "Updating task definition with new image..."
               
-              # Update the task definition with QA-specific configuration
+              # Update the task definition with improved configuration
               TASK_DEF_JSON=$(echo "$TASK_DEF" | jq --arg image "$FULL_IMAGE_URI" --arg name "$CONTAINER_NAME" '
                 .containerDefinitions = [.containerDefinitions[] | 
                   if .name == $name then 
@@ -355,57 +255,16 @@ jobs:
               echo "New task definition: $TASK_DEF_JSON"
               
               # Register the new task definition
-              echo "$TASK_DEF_JSON" > updated-task-def.json
-              aws ecs register-task-definition --cli-input-json file://updated-task-def.json
+              aws ecs register-task-definition --cli-input-json "$TASK_DEF_JSON"
             else
               echo "Image is already up to date, no need to update task definition"
             fi
           fi
 
-      - name: Create or update ECS service
+      - name: Force new deployment
         run: |
-          if [ "${{ steps.check-ecs-service.outputs.service_exists }}" == "MISSING" ]; then
-            echo "Creating new ECS service ${{ env.ECS_SERVICE }}"
-            
-            # Check if security group exists
-            SECURITY_GROUP_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=rizzlers-tf-qa-ecs-sg" --query 'SecurityGroups[0].GroupId' --output text)
-            if [ "$SECURITY_GROUP_ID" == "None" ]; then
-              echo "Security group not found, using default"
-              SECURITY_GROUP_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=default" "Name=vpc-id,Values=$(aws ec2 describe-vpcs --filters 'Name=tag:Name,Values=KDU-25-VPC' --query 'Vpcs[0].VpcId' --output text)" --query 'SecurityGroups[0].GroupId' --output text)
-            fi
-            
-            # Check if target group exists
-            TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups --names rizzlers-tf-qa-tg --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null || echo "")
-            
-            if [ -z "$TARGET_GROUP_ARN" ]; then
-              echo "Target group not found, looking for any QA target group"
-              TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups --query "TargetGroups[?contains(TargetGroupName, 'qa')].TargetGroupArn" --output text | head -1)
-            fi
-            
-            if [ -z "$TARGET_GROUP_ARN" ]; then
-              echo "No target group found, creating service without load balancer integration"
-              aws ecs create-service \
-                --cluster ${{ env.ECS_CLUSTER }} \
-                --service-name ${{ env.ECS_SERVICE }} \
-                --task-definition ${{ env.ECS_TASK_DEFINITION }} \
-                --desired-count 1 \
-                --launch-type FARGATE \
-                --network-configuration "awsvpcConfiguration={subnets=[${{ env.TF_VAR_private_subnet_ids }}],securityGroups=[$SECURITY_GROUP_ID],assignPublicIp=DISABLED}"
-            else
-              echo "Using target group: $TARGET_GROUP_ARN"
-              aws ecs create-service \
-                --cluster ${{ env.ECS_CLUSTER }} \
-                --service-name ${{ env.ECS_SERVICE }} \
-                --task-definition ${{ env.ECS_TASK_DEFINITION }} \
-                --desired-count 1 \
-                --launch-type FARGATE \
-                --network-configuration "awsvpcConfiguration={subnets=[${{ env.TF_VAR_private_subnet_ids }}],securityGroups=[$SECURITY_GROUP_ID],assignPublicIp=DISABLED}" \
-                --load-balancers "targetGroupArn=$TARGET_GROUP_ARN,containerName=${{ env.ECS_TASK_DEFINITION }}-container,containerPort=8080"
-            fi
-          else
-            echo "Updating existing ECS service ${{ env.ECS_SERVICE }}"
-            aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --force-new-deployment
-          fi
+          echo "Deploying to cluster: ${{ env.ECS_CLUSTER }}, service: ${{ env.ECS_SERVICE }}"
+          aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --force-new-deployment
 
       - name: Wait for service to stabilize
         run: |
