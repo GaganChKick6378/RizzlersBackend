@@ -34,6 +34,9 @@ jobs:
   test:
     name: Run Tests
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 136c96b (changed the deployement file)
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -353,8 +356,8 @@ jobs:
             cat backend/target/surefire-reports/*.txt || echo "Could not read test reports"
           else
             echo "No test reports found."
-<<<<<<< HEAD
           fi
+<<<<<<< HEAD
 =======
 <<<<<<< HEAD
           fi
@@ -362,3 +365,5 @@ jobs:
           fi
 >>>>>>> 63816ea (rebasing with dev)
 >>>>>>> cdc6176 (rebasing with dev)
+=======
+>>>>>>> 136c96b (changed the deployement file)
