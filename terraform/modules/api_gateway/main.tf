@@ -235,16 +235,9 @@ resource "aws_api_gateway_deployment" "deployment" {
   }
 }
 
-# Check if there's already a stage for the current environment
-data "aws_api_gateway_stage" "existing_stage" {
-  count = var.use_existing_resources && local.api_exists ? 1 : 0
-  rest_api_id = local.rest_api_id
-  stage_name  = var.environment
-}
-
-# Only create the stage for the current environment if it doesn't exist
+# Only create the stage for the current environment
 resource "aws_api_gateway_stage" "env_stage" {
-  count        = local.api_exists && length(aws_api_gateway_deployment.deployment) > 0 && (var.use_existing_resources && length(data.aws_api_gateway_stage.existing_stage) == 0 || !var.use_existing_resources) ? 1 : 0
+  count        = local.api_exists && length(aws_api_gateway_deployment.deployment) > 0 ? 1 : 0
   deployment_id = aws_api_gateway_deployment.deployment[0].id
   rest_api_id   = local.rest_api_id
   stage_name    = var.environment

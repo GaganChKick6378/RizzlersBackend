@@ -15,17 +15,12 @@ output "ecs_service_name" {
 
 output "api_gateway_url" {
   description = "URL of the API Gateway"
-  value       = "${module.api_gateway.api_url}"
+  value       = module.api_gateway.api_url
 }
 
-output "api_gateway_dev_url" {
-  description = "URL of the API Gateway dev stage"
-  value       = "${module.api_gateway.api_url}/dev"
-}
-
-output "api_gateway_qa_url" {
-  description = "URL of the API Gateway qa stage"
-  value       = "${module.api_gateway.api_url}/qa"
+output "api_gateway_stage_url" {
+  description = "URL of the API Gateway environment stage"
+  value       = module.api_gateway.stage_url
 }
 
 output "alb_dns_name" {
