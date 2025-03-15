@@ -1,11 +1,11 @@
 output "ecr_repository_url" {
   description = "URL of the ECR repository"
-  value       = module.ecr.repository_url
+  value       = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/rizzlers-tf-qa"
 }
 
 output "ecs_cluster_name" {
   description = "Name of the shared ECS cluster"
-  value       = module.ecs.cluster_name
+  value       = "rizzlers-cluster"
 }
 
 output "ecs_service_name" {
@@ -15,17 +15,12 @@ output "ecs_service_name" {
 
 output "api_gateway_url" {
   description = "URL of the API Gateway"
-  value       = "${module.api_gateway.api_url}"
-}
-
-output "api_gateway_dev_url" {
-  description = "URL of the API Gateway dev stage"
-  value       = "${module.api_gateway.api_url}/dev"
+  value       = "${var.aws_region}.execute-api.amazonaws.com/${module.api_gateway.rest_api_id}"
 }
 
 output "api_gateway_qa_url" {
   description = "URL of the API Gateway qa stage"
-  value       = "${module.api_gateway.api_url}/qa"
+  value       = "${var.aws_region}.execute-api.amazonaws.com/${module.api_gateway.rest_api_id}/qa"
 }
 
 output "alb_dns_name" {
