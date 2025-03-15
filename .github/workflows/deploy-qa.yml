@@ -243,7 +243,7 @@ jobs:
           echo "Repository URL from file: $(cat repo_url.txt)"
       
       - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: terraform-outputs
           path: /tmp/workflow-artifacts/repo_url.txt
@@ -266,7 +266,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
       
       - name: Download Repository URL
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: terraform-outputs
           path: /tmp/workflow-artifacts
@@ -336,7 +336,7 @@ jobs:
           echo "${FULL_IMAGE_URI}" > /tmp/image_uri.txt
       
       - name: Upload Image URI
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: build-outputs
           path: /tmp/image_uri.txt
@@ -356,7 +356,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
       
       - name: Download Build Outputs
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: build-outputs
           path: /tmp/workflow-artifacts
