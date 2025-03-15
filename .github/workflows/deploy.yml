@@ -356,6 +356,7 @@ jobs:
             cat backend/target/surefire-reports/*.txt || echo "Could not read test reports"
           else
             echo "No test reports found."
+<<<<<<< HEAD
           fi
 <<<<<<< HEAD
 =======
@@ -367,3 +368,6 @@ jobs:
 >>>>>>> cdc6176 (rebasing with dev)
 =======
 >>>>>>> 136c96b (changed the deployement file)
+=======
+          fi
+>>>>>>> 94de353 (rebasing with dev)
