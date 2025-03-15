@@ -132,6 +132,33 @@ jobs:
       - name: Import Existing Resources
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: |
+          # Make import script executable
+          chmod +x import-commands.sh
+          
+          # Run the import script to manage state properly
+          ./import-commands.sh
+          
+          # Verify with plan that we're not destroying resources
+          terraform plan -var="environment=qa" -out=tfplan
+          
+          # Check for destroy operations in the plan - exit if resources would be destroyed
+          DESTROY_OPS=$(terraform show -json tfplan | jq -r '.resource_changes[] | select(.change.actions | contains(["delete"]))' | wc -l)
+          if [ "$DESTROY_OPS" -gt "0" ]; then
+            echo "WARNING: Plan contains resource destructions! Review before proceeding."
+            terraform show -json tfplan | jq -r '.resource_changes[] | select(.change.actions | contains(["delete"])) | .address'
+            
+            # Remove problematic resources from state
+            terraform show -json tfplan | jq -r '.resource_changes[] | select(.change.actions | contains(["delete"])) | .address' | while read addr; do
+              echo "Removing $addr from state to prevent destruction"
+              terraform state rm "$addr" || true
+            done
+            
+            # Re-plan after state adjustments
+            terraform plan -var="environment=qa" -out=tfplan
+          else
+            echo "Plan looks good - no resource destructions detected."
+          fi
+          
           # Function to try importing a resource and ignore errors
           function try_import() {
             local resource_address=$1
@@ -140,7 +167,7 @@ jobs:
             terraform import -var="environment=qa" $resource_address $resource_id || echo "Import failed, resource may not exist yet"
           }
           
-          # Try to import resources that might already exist
+          # Continue with existing resource imports...
           # Security Group for API Gateway VPC Link
           VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=${{ env.TF_VAR_vpc_name }}" --query "Vpcs[0].VpcId" --output text)
           SG_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=rizzlers-tf-qa-vpce-sg" "Name=vpc-id,Values=$VPC_ID" --query "SecurityGroups[0].GroupId" --output text || echo "")

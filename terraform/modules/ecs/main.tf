@@ -1,4 +1,4 @@
-# Use existing ECS cluster instead of creating a new one
+# Reference the existing ECS cluster - don't create or destroy it
 data "aws_ecs_cluster" "existing_cluster" {
   cluster_name = "rizzlers-cluster"
 }

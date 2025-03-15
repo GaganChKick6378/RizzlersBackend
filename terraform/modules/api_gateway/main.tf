@@ -1,4 +1,4 @@
-# Use existing API Gateway instead of creating a new one
+# Reference the existing API Gateway - don't create or destroy it
 data "aws_api_gateway_rest_api" "existing_api" {
   name = "rizzlers-api"
 }
