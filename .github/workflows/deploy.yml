@@ -330,4 +330,8 @@ jobs:
             cat backend/target/surefire-reports/*.txt || echo "Could not read test reports"
           else
             echo "No test reports found."
+<<<<<<< HEAD
           fi
+=======
+          fi
+>>>>>>> 63816ea (rebasing with dev)
