@@ -49,6 +49,13 @@ data "aws_api_gateway_resource" "proxy_resource" {
   path        = "/{proxy+}"
 }
 
+# Check if the stage already exists
+data "aws_api_gateway_stage" "existing_stage" {
+  count = var.use_existing_resources && local.api_exists ? 1 : 0
+  rest_api_id = local.rest_api_id
+  stage_name  = var.environment
+}
+
 locals {
   # Get the root resource ID for the API Gateway
   # For a new API Gateway, this is the same as the rest_api_id
@@ -60,6 +67,9 @@ locals {
   
   # Determine if proxy resource exists
   proxy_exists = local.proxy_resource_id != ""
+  
+  # Check if stage exists
+  stage_exists = var.use_existing_resources && local.api_exists && length(data.aws_api_gateway_stage.existing_stage) > 0
 }
 
 # Security group for VPC Link - with environment in name
@@ -176,8 +186,9 @@ resource "aws_api_gateway_integration" "root_integration" {
 
 # CORS is handled separately as it may not already exist
 # We'll only set this up for the proxy resource if it exists
+# Don't create OPTIONS method if using existing resources - it likely already exists
 resource "aws_api_gateway_method" "proxy_options" {
-  count         = local.api_exists && local.proxy_exists ? 1 : 0
+  count         = (!var.use_existing_resources) && local.api_exists && local.proxy_exists ? 1 : 0
   rest_api_id   = local.rest_api_id
   resource_id   = local.proxy_resource_id
   http_method   = "OPTIONS"
@@ -185,7 +196,7 @@ resource "aws_api_gateway_method" "proxy_options" {
 }
 
 resource "aws_api_gateway_method_response" "proxy_options_response" {
-  count       = local.api_exists && length(aws_api_gateway_method.proxy_options) > 0 ? 1 : 0
+  count       = (!var.use_existing_resources) && local.api_exists && length(aws_api_gateway_method.proxy_options) > 0 ? 1 : 0
   rest_api_id = local.rest_api_id
   resource_id = local.proxy_resource_id
   http_method = aws_api_gateway_method.proxy_options[0].http_method
@@ -199,7 +210,7 @@ resource "aws_api_gateway_method_response" "proxy_options_response" {
 }
 
 resource "aws_api_gateway_integration" "proxy_options_integration" {
-  count       = local.api_exists && length(aws_api_gateway_method.proxy_options) > 0 ? 1 : 0
+  count       = (!var.use_existing_resources) && local.api_exists && length(aws_api_gateway_method.proxy_options) > 0 ? 1 : 0
   rest_api_id = local.rest_api_id
   resource_id = local.proxy_resource_id
   http_method = aws_api_gateway_method.proxy_options[0].http_method
@@ -211,7 +222,7 @@ resource "aws_api_gateway_integration" "proxy_options_integration" {
 }
 
 resource "aws_api_gateway_integration_response" "proxy_options_integration_response" {
-  count       = local.api_exists && length(aws_api_gateway_integration.proxy_options_integration) > 0 && length(aws_api_gateway_method_response.proxy_options_response) > 0 ? 1 : 0
+  count       = (!var.use_existing_resources) && local.api_exists && length(aws_api_gateway_integration.proxy_options_integration) > 0 && length(aws_api_gateway_method_response.proxy_options_response) > 0 ? 1 : 0
   rest_api_id = local.rest_api_id
   resource_id = local.proxy_resource_id
   http_method = aws_api_gateway_method.proxy_options[0].http_method
@@ -251,9 +262,9 @@ resource "aws_api_gateway_deployment" "deployment" {
   }
 }
 
-# Only create the stage for the current environment
+# Only create the stage for the current environment if it doesn't already exist
 resource "aws_api_gateway_stage" "env_stage" {
-  count        = local.api_exists && length(aws_api_gateway_deployment.deployment) > 0 ? 1 : 0
+  count        = (!local.stage_exists) && local.api_exists && length(aws_api_gateway_deployment.deployment) > 0 ? 1 : 0
   deployment_id = aws_api_gateway_deployment.deployment[0].id
   rest_api_id   = local.rest_api_id
   stage_name    = var.environment
