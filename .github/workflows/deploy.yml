@@ -5,6 +5,7 @@ on:
     branches:
       - dev
   pull_request:
+    types: [closed]
     branches:
       - dev
 
@@ -32,6 +33,7 @@ env:
 jobs:
   test:
     name: Run Tests
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
@@ -71,6 +73,7 @@ jobs:
 
   terraform:
     name: Terraform
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
     needs: test
     outputs:
@@ -142,7 +145,7 @@ jobs:
   build-and-deploy:
     name: Build and Deploy
     needs: terraform
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
 
     steps:
@@ -330,8 +333,4 @@ jobs:
             cat backend/target/surefire-reports/*.txt || echo "Could not read test reports"
           else
             echo "No test reports found."
-<<<<<<< HEAD
           fi
-=======
-          fi
->>>>>>> 63816ea (rebasing with dev)
