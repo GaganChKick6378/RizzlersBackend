@@ -1,12 +1,24 @@
-# Try to find existing API Gateway first
-data "aws_api_gateway_rest_api" "existing_api" {
-  name = "${var.name_prefix}-api"
-  count = var.use_existing_resources ? 1 : 0
+# Hard-code the existing API Gateway ID for QA environment
+locals {
+  # Use this ID for the existing API Gateway 
+  existing_api_id = "3red8g1idh"
+  
+  # Calculate rest_api_id based on environment and use_existing_resources
+  rest_api_id = var.use_existing_resources ? local.existing_api_id : length(aws_api_gateway_rest_api.api) > 0 ? aws_api_gateway_rest_api.api[0].id : ""
+  
+  # Only proceed if we have a valid API ID
+  api_exists = local.rest_api_id != ""
+  
+  # Create a unique name for the security group
+  sg_name = "${var.name_prefix}-vpce-sg-${var.environment}"
+  
+  # Create unique name for log group
+  log_group_name = "/aws/apigateway/${var.name_prefix}-api-${var.environment}"
 }
 
-# Only create a new API Gateway if it doesn't exist and use_existing_resources is false
+# Only create a new API Gateway if use_existing_resources is false
 resource "aws_api_gateway_rest_api" "api" {
-  count       = var.use_existing_resources && length(data.aws_api_gateway_rest_api.existing_api) > 0 ? 0 : 1
+  count       = var.use_existing_resources ? 0 : 1
   name        = "${var.name_prefix}-api"
   description = "Rizzlers REST API Gateway"
   
@@ -22,30 +34,8 @@ resource "aws_api_gateway_rest_api" "api" {
   )
 }
 
-# Use the existing API or the newly created one
-locals {
-  rest_api_id = var.use_existing_resources && length(data.aws_api_gateway_rest_api.existing_api) > 0 ? data.aws_api_gateway_rest_api.existing_api[0].id : length(aws_api_gateway_rest_api.api) > 0 ? aws_api_gateway_rest_api.api[0].id : ""
-  
-  # Only proceed if we have a valid API ID
-  api_exists = local.rest_api_id != ""
-  
-  # Create a unique name for the security group
-  sg_name = "${var.name_prefix}-vpce-sg-${var.environment}"
-  
-  # Create unique name for log group
-  log_group_name = "/aws/apigateway/${var.name_prefix}-api-${var.environment}"
-}
-
-# Try to find existing security group
-data "aws_security_group" "existing_sg" {
-  name   = local.sg_name
-  vpc_id = var.vpc_id
-  count  = var.use_existing_resources ? 1 : 0
-}
-
 # Security group for VPC Link - with environment in name
 resource "aws_security_group" "vpce_sg" {
-  count       = var.use_existing_resources && length(data.aws_security_group.existing_sg) > 0 ? 0 : 1
   name        = local.sg_name
   description = "Security group for API Gateway VPC Link - ${var.environment}"
   vpc_id      = var.vpc_id
@@ -58,14 +48,8 @@ resource "aws_security_group" "vpce_sg" {
   )
 }
 
-# Use the existing or newly created security group
-locals {
-  sg_id = var.use_existing_resources && length(data.aws_security_group.existing_sg) > 0 ? data.aws_security_group.existing_sg[0].id : length(aws_security_group.vpce_sg) > 0 ? aws_security_group.vpce_sg[0].id : ""
-}
-
 resource "aws_security_group_rule" "vpce_egress" {
-  count             = local.sg_id != "" ? 1 : 0
-  security_group_id = local.sg_id
+  security_group_id = aws_security_group.vpce_sg.id
   type              = "egress"
   from_port         = 0
   to_port           = 0
@@ -164,6 +148,7 @@ resource "aws_api_gateway_integration" "root_integration" {
 
 # Enable CORS for the proxy resource
 resource "aws_api_gateway_method" "proxy_options" {
+  count         = local.api_exists && length(aws_api_gateway_resource.proxy) > 0 ? 1 : 0
   rest_api_id   = local.rest_api_id
   resource_id   = aws_api_gateway_resource.proxy[0].id
   http_method   = "OPTIONS"
@@ -171,9 +156,10 @@ resource "aws_api_gateway_method" "proxy_options" {
 }
 
 resource "aws_api_gateway_method_response" "proxy_options_response" {
+  count       = local.api_exists && length(aws_api_gateway_method.proxy_options) > 0 ? 1 : 0
   rest_api_id = local.rest_api_id
   resource_id = aws_api_gateway_resource.proxy[0].id
-  http_method = aws_api_gateway_method.proxy_options.http_method
+  http_method = aws_api_gateway_method.proxy_options[0].http_method
   status_code = "200"
   
   response_parameters = {
@@ -184,9 +170,10 @@ resource "aws_api_gateway_method_response" "proxy_options_response" {
 }
 
 resource "aws_api_gateway_integration" "proxy_options_integration" {
+  count       = local.api_exists && length(aws_api_gateway_method.proxy_options) > 0 ? 1 : 0
   rest_api_id = local.rest_api_id
   resource_id = aws_api_gateway_resource.proxy[0].id
-  http_method = aws_api_gateway_method.proxy_options.http_method
+  http_method = aws_api_gateway_method.proxy_options[0].http_method
   type        = "MOCK"
   
   request_templates = {
@@ -195,10 +182,11 @@ resource "aws_api_gateway_integration" "proxy_options_integration" {
 }
 
 resource "aws_api_gateway_integration_response" "proxy_options_integration_response" {
+  count       = local.api_exists && length(aws_api_gateway_integration.proxy_options_integration) > 0 && length(aws_api_gateway_method_response.proxy_options_response) > 0 ? 1 : 0
   rest_api_id = local.rest_api_id
   resource_id = aws_api_gateway_resource.proxy[0].id
-  http_method = aws_api_gateway_method.proxy_options.http_method
-  status_code = aws_api_gateway_method_response.proxy_options_response.status_code
+  http_method = aws_api_gateway_method.proxy_options[0].http_method
+  status_code = aws_api_gateway_method_response.proxy_options_response[0].status_code
   
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
@@ -250,15 +238,8 @@ resource "aws_api_gateway_stage" "env_stage" {
   )
 }
 
-# Check for existing CloudWatch log group
-data "aws_cloudwatch_log_group" "existing_logs" {
-  count = var.use_existing_resources ? 1 : 0
-  name  = local.log_group_name
-}
-
 # CloudWatch Log Group for API Gateway
 resource "aws_cloudwatch_log_group" "api_logs" {
-  count             = var.use_existing_resources && length(data.aws_cloudwatch_log_group.existing_logs) > 0 ? 0 : 1
   name              = local.log_group_name
   retention_in_days = 30
   
