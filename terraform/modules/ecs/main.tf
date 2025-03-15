@@ -73,7 +73,7 @@ resource "aws_iam_role" "ecs_task_role" {
 
 # Task Definition
 resource "aws_ecs_task_definition" "app_task" {
-  family                   = "${var.name_prefix}-task"
+  family                   = "rizzlers-tf-qa-task"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   cpu                      = "256"
@@ -83,7 +83,7 @@ resource "aws_ecs_task_definition" "app_task" {
 
   container_definitions = jsonencode([
     {
-      name      = "${var.name_prefix}-container"
+      name      = "rizzlers-tf-qa-task-container"
       image     = "${var.ecr_repository}:latest"
       essential = true
       
@@ -147,7 +147,7 @@ resource "aws_ecs_task_definition" "app_task" {
 
 # ECS Service
 resource "aws_ecs_service" "app_service" {
-  name             = "${var.name_prefix}-service"
+  name             = "rizzlers-tf-qa-service"
   cluster          = data.aws_ecs_cluster.existing_cluster.id
   task_definition  = aws_ecs_task_definition.app_task.arn
   launch_type      = "FARGATE"
@@ -167,7 +167,7 @@ resource "aws_ecs_service" "app_service" {
   
   load_balancer {
     target_group_arn = var.target_group_arn
-    container_name   = "${var.name_prefix}-container"
+    container_name   = "rizzlers-tf-qa-task-container"
     container_port   = var.container_port
   }
   
