@@ -31,19 +31,16 @@ variable "health_check_path" {
 variable "database_url" {
   description = "Database URL"
   type        = string
-  default     = "jdbc:postgresql://ibe2025-kdu25rdsinstance61f66da9-8harocvoxzt8.c3ysg6m2290x.ap-south-1.rds.amazonaws.com:5432/Database_10_dev"
 }
 
 variable "database_username" {
   description = "Database username"
   type        = string
-  default     = "Team_10"
 }
 
 variable "database_password" {
   description = "Database password"
   type        = string
-  default     = "Password10"
   sensitive   = true
 }
 
