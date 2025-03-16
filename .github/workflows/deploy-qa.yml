@@ -449,7 +449,7 @@ jobs:
                     .environment = [
                       {"name": "SPRING_PROFILES_ACTIVE", "value": "qa"},
                       {"name": "SERVER_PORT", "value": "8080"},
-                      {"name": "SPRING_DATASOURCE_URL", "value": "${{ env.TF_VAR_database_url }}"},
+                      {"name": "SPRING_DATASOURCE_URL_QA", "value": "${{ env.TF_VAR_database_url }}"},
                       {"name": "SPRING_DATASOURCE_USERNAME", "value": "${{ env.TF_VAR_database_username }}"},
                       {"name": "SPRING_DATASOURCE_PASSWORD", "value": "${{ env.TF_VAR_database_password }}"}
                     ]
