@@ -3,7 +3,6 @@ package com.kdu.rizzlers.controller;
 import com.kdu.rizzlers.dto.in.StudentRequest;
 import com.kdu.rizzlers.dto.out.StudentResponse;
 import com.kdu.rizzlers.service.StudentService;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -13,7 +12,6 @@ import jakarta.validation.Valid;
 import java.util.List;
 
 @RestController
-@RequiredArgsConstructor
 @RequestMapping("/students")
 public class StudentController {
     @Autowired
