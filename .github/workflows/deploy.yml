@@ -20,8 +20,8 @@ env:
   # Project name without environment for shared resources
   TF_VAR_project_name: "rizzlers"
   # Subnet IDs from KDU-25-VPC in ap-south-1
-  TF_VAR_public_subnet_ids: '["subnet-0b6ce2e699142888b", "subnet-04648c3dd5600df55", "subnet-0600d671cd9103ccc"]'
-  TF_VAR_private_subnet_ids: '["subnet-0b31fd91378b4e19c", "subnet-0799d7919a2b9f1e5", "subnet-0185b2ce809770610"]'
+  TF_VAR_public_subnet_ids: ${{ secrets.TF_VAR_PUBLIC_SUBNET_IDS }}
+  TF_VAR_private_subnet_ids: ${{ secrets.TF_VAR_PRIVATE_SUBNET_IDS }}
   # Hardcoded shared ECS cluster name
   ECS_CLUSTER: "rizzlers-cluster"
   # Environment-specific ECS service name
@@ -300,11 +300,11 @@ jobs:
                     .environment = [
                       {"name": "SPRING_PROFILES_ACTIVE", "value": "dev"},
                       {"name": "SERVER_PORT", "value": "8080"},
-                      {"name": "SPRING_DATASOURCE_URL", "value": "jdbc:postgresql://database-kdu.czpwqpnfk9dp.ap-south-1.rds.amazonaws.com:5432/Database_10_dev"},
-                      {"name": "SPRING_DATASOURCE_USERNAME", "value": "Team_10"},
-                      {"name": "SPRING_DATASOURCE_PASSWORD", "value": "Password10"},
-                      {"name": "GRAPHQL_ENDPOINT", "value": "${{ env.GRAPHQL_ENDPOINT }}"},
-                      {"name": "GRAPHQL_API_KEY", "value": "${{ env.GRAPHQL_API_KEY }}"}
+                      {"name": "SPRING_DATASOURCE_URL", "value": "${{ secrets.DB_URL_DEV }}"},
+                      {"name": "SPRING_DATASOURCE_USERNAME", "value": "${{ secrets.DB_USERNAME }}"},
+                      {"name": "SPRING_DATASOURCE_PASSWORD", "value": "${{ secrets.DB_PASSWORD }}"},
+                      {"name": "GRAPHQL_ENDPOINT", "value": "${{ secrets.GRAPHQL_ENDPOINT }}"},
+                      {"name": "GRAPHQL_API_KEY", "value": "${{ secrets.GRAPHQL_API_KEY }}"}
                     ]
                   else . end
                 ] | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
