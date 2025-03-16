@@ -29,6 +29,9 @@ env:
   ECS_TASK_DEFINITION: "rizzlers-tf-dev-task"
   # Hardcoded ECR repository name
   ECR_REPOSITORY_NAME: "rizzlers-tf-dev"
+  # GraphQL Configuration
+  GRAPHQL_ENDPOINT: ${{ secrets.GRAPHQL_ENDPOINT }}
+  GRAPHQL_API_KEY: ${{ secrets.GRAPHQL_API_KEY }}
 
 jobs:
   test:
@@ -276,7 +279,9 @@ jobs:
                       {"name": "SERVER_PORT", "value": "8080"},
                       {"name": "SPRING_DATASOURCE_URL", "value": "jdbc:postgresql://database-kdu.czpwqpnfk9dp.ap-south-1.rds.amazonaws.com:5432/Database_10_dev"},
                       {"name": "SPRING_DATASOURCE_USERNAME", "value": "Team_10"},
-                      {"name": "SPRING_DATASOURCE_PASSWORD", "value": "Password10"}
+                      {"name": "SPRING_DATASOURCE_PASSWORD", "value": "Password10"},
+                      {"name": "GRAPHQL_ENDPOINT", "value": "${{ env.GRAPHQL_ENDPOINT }}"},
+                      {"name": "GRAPHQL_API_KEY", "value": "${{ env.GRAPHQL_API_KEY }}"}
                     ]
                   else . end
                 ] | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)

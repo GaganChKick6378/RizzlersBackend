@@ -1,0 +1,74 @@
+type Student {
+    id: ID!
+    firstName: String!
+    lastName: String!
+    email: String!
+    enrollmentNumber: String!
+    yearOfStudy: Int
+    cgpa: Float
+    department: String
+    dateOfBirth: String
+    mobileNumber: String
+    address: String
+    createdAt: String!
+    updatedAt: String
+    isActive: Boolean!
+}
+
+type Property {
+    property_id: ID!
+    property_name: String!
+    property_address: String
+    contact_number: String
+    tenant_id: Int
+    createdAt: String!
+    updatedAt: String
+    isActive: Boolean!
+}
+
+type Query {
+    getAllStudents: [Student]
+    getStudentById(id: ID!): Student
+    getStudentByEmail(email: String!): Student
+    
+    getAllProperties: [Property]
+    getPropertyById(id: ID!): Property
+    getProperty(where: PropertyFilterInput): Property
+}
+
+input PropertyFilterInput {
+    property_id: ID
+    property_name: String
+}
+
+type Mutation {
+    createStudent(
+        firstName: String!
+        lastName: String!
+        email: String!
+        enrollmentNumber: String!
+        yearOfStudy: Int
+        cgpa: Float
+        department: String
+        dateOfBirth: String
+        mobileNumber: String
+        address: String
+    ): Student
+
+    updateStudent(
+        id: ID!
+        firstName: String
+        lastName: String
+        email: String
+        enrollmentNumber: String
+        yearOfStudy: Int
+        cgpa: Float
+        department: String
+        dateOfBirth: String
+        mobileNumber: String
+        address: String
+        isActive: Boolean
+    ): Student
+
+    deleteStudent(id: ID!): Boolean
+}
