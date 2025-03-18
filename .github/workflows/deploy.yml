@@ -33,9 +33,13 @@ env:
 jobs:
   test:
     name: Run Tests
+<<<<<<< HEAD
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
     continue-on-error: true
+=======
+    runs-on: ubuntu-latest
+>>>>>>> d310a04 (modified the script)
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -53,6 +57,7 @@ jobs:
           # Try to generate Maven wrapper if necessary
           mvn -N io.takari:maven:wrapper -Dmaven=3.9.5 || true
           
+<<<<<<< HEAD
           # Check if tests are available before running
           if [ -d "src/test" ]; then
             echo "Tests directory found. Running StudentControllerTest..."
@@ -66,6 +71,15 @@ jobs:
       - name: Upload test results
         if: always() && hashFiles('backend/target/surefire-reports') != ''
         uses: actions/upload-artifact@v4
+=======
+          # Run the StudentControllerTest
+          echo "Running StudentControllerTest..."
+          mvn test -Dtest=com.kdu.rizzlers.controller.StudentControllerTest
+          
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+>>>>>>> d310a04 (modified the script)
         with:
           name: test-results
           path: backend/target/surefire-reports
@@ -191,6 +205,7 @@ jobs:
           # Try to generate Maven wrapper if necessary
           mvn -N io.takari:maven:wrapper -Dmaven=3.9.5 || true
 
+<<<<<<< HEAD
           # Check if tests are available before running
           if [ -d "src/test" ]; then
             echo "Tests directory found. Running StudentControllerTest..."
@@ -198,6 +213,11 @@ jobs:
           else
             echo "No tests directory found. Skipping tests."
           fi
+=======
+          # Run the StudentControllerTest explicitly
+          echo "Running StudentControllerTest..."
+          mvn test -Dtest=com.kdu.rizzlers.controller.StudentControllerTest
+>>>>>>> d310a04 (modified the script)
           
           # Build the project (create a dummy JAR if it fails)
           mvn clean package -DskipTests || mkdir -p target && touch target/app.jar
