@@ -20,6 +20,6 @@ public class GuestTypeDefinitionResponse {
     private String description;
     private Boolean isActive;
     private Integer maxCount;
-    // private LocalDateTime createdAt;
-    // private LocalDateTime updatedAt;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 } 

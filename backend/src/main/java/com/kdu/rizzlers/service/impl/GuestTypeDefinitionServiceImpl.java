@@ -112,7 +112,7 @@ public class GuestTypeDefinitionServiceImpl implements GuestTypeDefinitionServic
                 .maxAge(guestTypeDefinition.getMaxAge())
                 .description(guestTypeDefinition.getDescription())
                 .isActive(guestTypeDefinition.getIsActive())
-                .maxCount(guestTypeDefinition.getMaxCount())
+                .maxCount(guestTypeDefinition.getMaxCount() != null ? guestTypeDefinition.getMaxCount() : 1)
                 .createdAt(guestTypeDefinition.getCreatedAt())
                 .updatedAt(guestTypeDefinition.getUpdatedAt())
                 .build();

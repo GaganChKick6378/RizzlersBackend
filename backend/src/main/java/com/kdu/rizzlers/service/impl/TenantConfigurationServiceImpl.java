@@ -9,6 +9,7 @@ import com.kdu.rizzlers.exception.ResourceNotFoundException;
 import com.kdu.rizzlers.repository.TenantConfigurationRepository;
 import com.kdu.rizzlers.service.GuestTypeDefinitionService;
 import com.kdu.rizzlers.service.TenantConfigurationService;
+import com.kdu.rizzlers.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -121,32 +122,32 @@ public class TenantConfigurationServiceImpl implements TenantConfigurationServic
         // Map each configuration to the corresponding field in the response
         for (TenantConfiguration config : configurations) {
             String field = config.getField();
-            Map<String, Object> value = config.getValue();
+            Map<String, Object> valueMap = JsonUtil.jsonToMap(config.getValue());
             
             switch (field) {
                 case "header_logo":
-                    builder.headerLogo(value);
+                    builder.headerLogo(valueMap);
                     break;
                 case "page_title":
-                    builder.pageTitle(value);
+                    builder.pageTitle(valueMap);
                     break;
                 case "banner_image":
-                    builder.bannerImage(value);
+                    builder.bannerImage(valueMap);
                     break;
                 case "length_of_stay":
-                    builder.lengthOfStay(value);
+                    builder.lengthOfStay(valueMap);
                     break;
                 case "guest_options":
-                    builder.guestOptions(value);
+                    builder.guestOptions(valueMap);
                     break;
                 case "room_options":
-                    builder.roomOptions(value);
+                    builder.roomOptions(valueMap);
                     break;
                 case "accessibility_options":
-                    builder.accessibilityOptions(value);
+                    builder.accessibilityOptions(valueMap);
                     break;
                 case "number_of_rooms":
-                    builder.numberOfRooms(value);
+                    builder.numberOfRooms(valueMap);
                     break;
                 default:
                     // Ignore other fields
