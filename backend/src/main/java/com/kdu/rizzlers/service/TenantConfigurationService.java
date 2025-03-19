@@ -1,6 +1,7 @@
 package com.kdu.rizzlers.service;
 
 import com.kdu.rizzlers.dto.in.TenantConfigurationRequest;
+import com.kdu.rizzlers.dto.out.LandingPageConfigResponse;
 import com.kdu.rizzlers.dto.out.TenantConfigurationResponse;
 
 import java.util.List;
@@ -14,4 +15,7 @@ public interface TenantConfigurationService {
     TenantConfigurationResponse getConfigurationByTenantIdAndPageAndField(Integer tenantId, String page, String field);
     TenantConfigurationResponse updateConfiguration(Long id, TenantConfigurationRequest request);
     void deleteConfiguration(Long id);
+    
+    // New method to get complete landing page configuration
+    LandingPageConfigResponse getLandingPageConfiguration(Integer tenantId);
 } 

@@ -1,6 +1,7 @@
 package com.kdu.rizzlers.controller;
 
 import com.kdu.rizzlers.dto.in.TenantConfigurationRequest;
+import com.kdu.rizzlers.dto.out.LandingPageConfigResponse;
 import com.kdu.rizzlers.dto.out.TenantConfigurationResponse;
 import com.kdu.rizzlers.service.TenantConfigurationService;
 import jakarta.validation.Valid;
@@ -48,6 +49,11 @@ public class TenantConfigurationController {
     public ResponseEntity<TenantConfigurationResponse> getConfigurationByTenantIdAndPageAndField(
             @PathVariable Integer tenantId, @PathVariable String page, @PathVariable String field) {
         return ResponseEntity.ok(tenantConfigurationService.getConfigurationByTenantIdAndPageAndField(tenantId, page, field));
+    }
+    
+    @GetMapping("/tenant/{tenantId}/landing")
+    public ResponseEntity<LandingPageConfigResponse> getLandingPageConfiguration(@PathVariable Integer tenantId) {
+        return ResponseEntity.ok(tenantConfigurationService.getLandingPageConfiguration(tenantId));
     }
 
     @PutMapping("/{id}")

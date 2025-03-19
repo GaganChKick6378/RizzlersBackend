@@ -35,4 +35,7 @@ public class GuestTypeDefinition extends BaseEntity {
 
     @Column(name = "is_active")
     private Boolean isActive = true;
+    
+    @Column(name = "max_count")
+    private Integer maxCount = 1;
 } 

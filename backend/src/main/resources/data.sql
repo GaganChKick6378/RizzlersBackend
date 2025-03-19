@@ -20,6 +20,10 @@ VALUES
     (1, 'landing', 'page_title', '{"text": "Book Your Dream Vacation"}', TRUE),
     (1, 'landing', 'banner_image', '{"url": "https://example.com/banners/beach-resort.jpg", "alt": "Beach Resort"}', TRUE),
     (1, 'landing', 'length_of_stay', '{"min": 1, "max": 30, "default": 3}', TRUE),
+    (1, 'landing', 'guest_options', '{"show": true, "use_guest_type_definitions": true}', TRUE),
+    (1, 'landing', 'room_options', '{"show": true, "max_rooms": 3}', TRUE),
+    (1, 'landing', 'accessibility_options', '{"show": true, "options": ["wheelchair", "hearing", "visual"]}', TRUE),
+    (1, 'landing', 'number_of_rooms', '{"value": 3, "min": 1, "max": 5}', TRUE),
     
     -- Results page configurations for tenant 1
     (1, 'results', 'filters', '{"show": true, "position": "left"}', TRUE),
@@ -72,10 +76,10 @@ VALUES
     (2, 5, 6, ARRAY['https://example.com/images/room5-1.jpg', 'https://example.com/images/room5-2.jpg', 'https://example.com/images/room5-3.jpg'], 1);
 
 -- Sample guest type definitions
-INSERT INTO guest_type_definition (tenant_id, guest_type, min_age, max_age, description, is_active)
+INSERT INTO guest_type_definition (tenant_id, guest_type, min_age, max_age, description, is_active, max_count)
 VALUES
-    (1, 'adult', 18, 999, 'Adults (18+)', TRUE),
-    (1, 'teen', 13, 17, 'Teens (13-17)', TRUE),
-    (1, 'kid', 0, 12, 'Kids (0-12)', TRUE),
-    (2, 'adult', 18, 999, 'Adults (18+)', TRUE),
-    (2, 'child', 0, 17, 'Children (0-17)', TRUE); 
+    (1, 'adult', 18, 999, 'Adults (18+)', TRUE, 4),
+    (1, 'teen', 13, 17, 'Teens (13-17)', TRUE, 3),
+    (1, 'kid', 0, 12, 'Kids (0-12)', TRUE, 2),
+    (2, 'adult', 18, 999, 'Adults (18+)', TRUE, 4),
+    (2, 'child', 0, 17, 'Children (0-17)', TRUE, 2); 

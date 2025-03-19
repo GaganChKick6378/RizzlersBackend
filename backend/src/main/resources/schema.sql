@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS guest_type_definition (
     max_age INTEGER NOT NULL,
     description VARCHAR(255),
     is_active BOOLEAN DEFAULT TRUE,
+    max_count INTEGER DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

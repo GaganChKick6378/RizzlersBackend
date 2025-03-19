@@ -19,6 +19,7 @@ public class GuestTypeDefinitionResponse {
     private Integer maxAge;
     private String description;
     private Boolean isActive;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+    private Integer maxCount;
+    // private LocalDateTime createdAt;
+    // private LocalDateTime updatedAt;
 } 

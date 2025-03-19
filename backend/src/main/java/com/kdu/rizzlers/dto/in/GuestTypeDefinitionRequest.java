@@ -33,4 +33,7 @@ public class GuestTypeDefinitionRequest {
     private String description;
 
     private Boolean isActive = true;
+    
+    @Min(value = 1, message = "Maximum count must be at least 1")
+    private Integer maxCount = 1;
 } 
