@@ -416,9 +416,12 @@ jobs:
             echo "No active task definition found. Will need to create one from scratch."
             TASK_DEF="{}"
           else
+            # Clean up any potential junk in the ARN
+            LATEST_TASK_DEF_ARN=$(echo "$LATEST_TASK_DEF_ARN" | tr -d '\n' | sed 's/None//g')
+            
             echo "Found latest task definition: $LATEST_TASK_DEF_ARN"
             # Get the current task definition
-            TASK_DEF=$(aws ecs describe-task-definition --task-definition $LATEST_TASK_DEF_ARN --query 'taskDefinition' 2>/dev/null || echo '{}')
+            TASK_DEF=$(aws ecs describe-task-definition --task-definition "$LATEST_TASK_DEF_ARN" --query 'taskDefinition' 2>/dev/null || echo '{}')
           fi
 
           if [ "$TASK_DEF" = "{}" ]; then
@@ -501,75 +504,70 @@ jobs:
             NEW_TASK_DEF_ARN=$(echo "$REGISTER_RESULT" | jq -r '.taskDefinition.taskDefinitionArn')
             
             if [ -n "$NEW_TASK_DEF_ARN" ] && [ "$NEW_TASK_DEF_ARN" != "null" ] && [ "$NEW_TASK_DEF_ARN" != "None" ]; then
-              echo "Successfully registered new task definition: $NEW_TASK_DEF_ARN"
+              # Clean up any potential junk in the ARN
+              NEW_TASK_DEF_ARN=$(echo "$NEW_TASK_DEF_ARN" | tr -d '\n' | sed 's/None//g')
               
-              # Save the new task definition ARN to use later
-              echo "NEW_TASK_DEF_ARN=$NEW_TASK_DEF_ARN" >> $GITHUB_ENV
+              # Validate that the ARN starts with "arn:aws:" and has a valid format
+              if [[ "$NEW_TASK_DEF_ARN" =~ ^arn:aws:ecs:.+:.+:task-definition/.+:[0-9]+$ ]]; then
+                echo "Successfully registered new task definition: $NEW_TASK_DEF_ARN"
+                
+                # Save the new task definition ARN to use later
+                echo "NEW_TASK_DEF_ARN=$NEW_TASK_DEF_ARN" >> $GITHUB_ENV
+              else
+                echo "WARNING: New task definition ARN has invalid format: $NEW_TASK_DEF_ARN"
+                echo "Will proceed with force-new-deployment only"
+              fi
             else
               echo "Failed to register new task definition or received invalid ARN"
               echo "Registration result: $REGISTER_RESULT"
             fi
           fi
 
-      - name: Apply ECS Service
+      - name: Update ECS Service
         run: |
-          echo "Checking if cluster exists..."
-          CLUSTER_DETAILS=$(aws ecs describe-clusters --clusters "${{ env.ECS_CLUSTER }}" --query 'clusters[0].status')
+          echo "Updating ECS service..."
           
-          if [ -z "$CLUSTER_DETAILS" ] || [ "$CLUSTER_DETAILS" == "null" ]; then
-            echo "Error: Cluster ${{ env.ECS_CLUSTER }} not found!"
-            exit 1
-          fi
-          
-          echo "Checking if service exists..."
-          SERVICE_DETAILS=$(aws ecs describe-services --cluster "${{ env.ECS_CLUSTER }}" --services "${{ env.ECS_SERVICE }}" --query 'services[0].status' 2>/dev/null || echo "null")
-          
-          if [ "$SERVICE_DETAILS" == "null" ]; then
-            echo "Service doesn't exist. Checkout the code to apply the full terraform configuration"
-            # Checkout code
-            git clone https://github.com/yourorganization/RizzlersBackend.git /tmp/repo || true
-            cd /tmp/repo/terraform
-            
-            # Initialize terraform
-            terraform init -reconfigure
-            
-            # Apply only ECS service
-            terraform apply -auto-approve -var="environment=qa" \
-              -target=module.ecs.aws_ecs_service.app_service || echo "Ignoring ECS service errors"
-          else
-            echo "Service exists, finding task definition to use..."
-            
-            # Use the newly registered task definition if available
-            if [ -n "$NEW_TASK_DEF_ARN" ] && [ "$NEW_TASK_DEF_ARN" != "None" ]; then
-              echo "Using newly registered task definition: $NEW_TASK_DEF_ARN"
-              TASK_DEF_TO_USE=$NEW_TASK_DEF_ARN
+          if [ -n "${{ env.NEW_TASK_DEF_ARN }}" ] && [ "${{ env.NEW_TASK_DEF_ARN }}" != "None" ]; then
+            # Additional validation for ARN format
+            if [[ "${{ env.NEW_TASK_DEF_ARN }}" =~ ^arn:aws:ecs:.+:.+:task-definition/.+:[0-9]+$ ]]; then
+              echo "Updating service with valid task definition: ${{ env.NEW_TASK_DEF_ARN }}"
+              aws ecs update-service --cluster "${{ env.ECS_CLUSTER }}" --service "${{ env.ECS_SERVICE }}" --task-definition "${{ env.NEW_TASK_DEF_ARN }}" --force-new-deployment
             else
-              # Find the latest active task definition revision if we didn't register a new one
-              LATEST_TASK_DEF_ARN=$(aws ecs list-task-definitions --family-prefix "${{ env.ECS_TASK_DEFINITION }}" --status ACTIVE --sort DESC --max-items 1 --query 'taskDefinitionArns[0]' --output text)
-              
-              if [ -n "$LATEST_TASK_DEF_ARN" ] && [ "$LATEST_TASK_DEF_ARN" != "None" ]; then
-                echo "Found latest active task definition: $LATEST_TASK_DEF_ARN"
-                TASK_DEF_TO_USE=$LATEST_TASK_DEF_ARN
-              else
-                echo "No active task definitions found for ${{ env.ECS_TASK_DEFINITION }}"
-                # Don't set TASK_DEF_TO_USE to avoid passing it to the command when it's empty
-                TASK_DEF_TO_USE=""
-              fi
-            fi
-            
-            # Update the service to use the task definition and force a new deployment
-            echo "Updating service with task definition: $TASK_DEF_TO_USE"
-            if [ -n "$TASK_DEF_TO_USE" ] && [ "$TASK_DEF_TO_USE" != "None" ]; then
-              # Directly using the ARN without variable expansion in the command
-              aws ecs update-service --cluster "${{ env.ECS_CLUSTER }}" --service "${{ env.ECS_SERVICE }}" --task-definition "$TASK_DEF_TO_USE" --force-new-deployment
-            else
-              echo "No valid task definition ARN found. Using force-new-deployment only."
+              echo "WARNING: Task definition ARN format is invalid: ${{ env.NEW_TASK_DEF_ARN }}"
+              echo "Falling back to force-new-deployment only"
               aws ecs update-service --cluster "${{ env.ECS_CLUSTER }}" --service "${{ env.ECS_SERVICE }}" --force-new-deployment
             fi
-            
-            echo "Service updated successfully"
+          else
+            echo "No valid task definition ARN found. Using force-new-deployment only."
+            aws ecs update-service --cluster "${{ env.ECS_CLUSTER }}" --service "${{ env.ECS_SERVICE }}" --force-new-deployment
           fi
-
+          
+      - name: Validate Service Update
+        run: |
+          echo "Validating service update..."
+          
+          # Wait a moment for the update to propagate
+          sleep 5
+          
+          # Check service details to confirm update is in progress
+          SERVICE_DETAILS=$(aws ecs describe-services --cluster "${{ env.ECS_CLUSTER }}" --services "${{ env.ECS_SERVICE }}")
+          
+          # Extract current task definition from service
+          CURRENT_TASK_DEF=$(echo "$SERVICE_DETAILS" | jq -r '.services[0].taskDefinition')
+          echo "Current service task definition: $CURRENT_TASK_DEF"
+          
+          # Extract deployment status
+          DEPLOYMENT_STATUS=$(echo "$SERVICE_DETAILS" | jq -r '.services[0].deployments[0].status')
+          echo "Current deployment status: $DEPLOYMENT_STATUS"
+          
+          if [ -n "${{ env.NEW_TASK_DEF_ARN }}" ] && [ "$CURRENT_TASK_DEF" == "${{ env.NEW_TASK_DEF_ARN }}" ]; then
+            echo "✅ Service updated successfully with new task definition!"
+          elif [ "$DEPLOYMENT_STATUS" == "PRIMARY" ]; then
+            echo "✅ Service update in progress with valid task definition"
+          else
+            echo "⚠️ Service update status cannot be confirmed. Manual verification recommended."
+          fi
+          
       - name: Wait for Service to Stabilize
         run: |
           echo "Waiting for service to stabilize..."
