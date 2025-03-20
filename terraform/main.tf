@@ -50,6 +50,7 @@ module "ecs" {
   health_check_path = var.health_check_path
   tags            = var.tags
   database_url    = var.database_url
+  qa_database_url = var.qa_database_url
   database_username = var.database_username
   database_password = var.database_password
   name_prefix     = local.resource_name_prefix

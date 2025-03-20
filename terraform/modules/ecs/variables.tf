@@ -54,6 +54,12 @@ variable "database_url" {
   type        = string
 }
 
+variable "qa_database_url" {
+  description = "QA Database URL"
+  type        = string
+  default     = ""
+}
+
 variable "database_username" {
   description = "Database username"
   type        = string
