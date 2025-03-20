@@ -18,14 +18,20 @@ output "api_gateway_url" {
   value       = "${module.api_gateway.api_url}"
 }
 
+output "api_gateway_environment_url" {
+  description = "URL of the API Gateway environment stage"
+  value       = "${module.api_gateway.api_url}/${var.environment}"
+}
+
+# Keep these for backward compatibility but they will now reference the environment-specific URL
 output "api_gateway_dev_url" {
-  description = "URL of the API Gateway dev stage"
-  value       = "${module.api_gateway.api_url}/dev"
+  description = "URL of the API Gateway dev stage (DEPRECATED: Use api_gateway_environment_url)"
+  value       = var.environment == "dev" ? "${module.api_gateway.api_url}/dev" : null
 }
 
 output "api_gateway_qa_url" {
-  description = "URL of the API Gateway qa stage"
-  value       = "${module.api_gateway.api_url}/qa"
+  description = "URL of the API Gateway qa stage (DEPRECATED: Use api_gateway_environment_url)"
+  value       = var.environment == "qa" ? "${module.api_gateway.api_url}/qa" : null
 }
 
 output "alb_dns_name" {

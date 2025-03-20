@@ -14,6 +14,27 @@ resource "aws_api_gateway_rest_api" "api" {
   )
 }
 
+# Data source for accessing an existing API Gateway REST API
+# This is used when we're referencing an API that already exists in the account
+# If this fails, the module will fall back to the newly created API
+data "aws_api_gateway_rest_api" "existing_api" {
+  name = "${var.project_name}-api"
+
+  # Make it depend on the API creation to handle the case
+  # when we're creating the API for the first time
+  depends_on = [aws_api_gateway_rest_api.api]
+}
+
+# Local variable to determine which API ID to use
+locals {
+  # Use the existing API if found, otherwise use the newly created one
+  rest_api_id = try(data.aws_api_gateway_rest_api.existing_api.id, aws_api_gateway_rest_api.api.id)
+  
+  # Root resource ID - always use the newly created API for this since data source doesn't provide it
+  # We'll need to handle this carefully in imports
+  root_resource_id = aws_api_gateway_rest_api.api.root_resource_id
+}
+
 # Create a VPC Link for integrating with private resources
 resource "aws_api_gateway_vpc_link" "link" {
   name        = "${var.name_prefix}-vpce-link"
@@ -52,14 +73,14 @@ resource "aws_security_group_rule" "vpce_egress" {
 
 # API resource for the proxy integration
 resource "aws_api_gateway_resource" "proxy" {
-  rest_api_id = aws_api_gateway_rest_api.api.id
-  parent_id   = aws_api_gateway_rest_api.api.root_resource_id
+  rest_api_id = local.rest_api_id
+  parent_id   = local.root_resource_id
   path_part   = "{proxy+}"
 }
 
 # Setup a method for the proxy resource with ANY HTTP method
 resource "aws_api_gateway_method" "proxy_method" {
-  rest_api_id   = aws_api_gateway_rest_api.api.id
+  rest_api_id   = local.rest_api_id
   resource_id   = aws_api_gateway_resource.proxy.id
   http_method   = "ANY"
   authorization = "NONE" # No authorization for now as per requirement
@@ -72,7 +93,7 @@ resource "aws_api_gateway_method" "proxy_method" {
 
 # Integration with Load Balancer - completely revised for proper proxy path handling
 resource "aws_api_gateway_integration" "lb_integration" {
-  rest_api_id             = aws_api_gateway_rest_api.api.id
+  rest_api_id             = local.rest_api_id
   resource_id             = aws_api_gateway_resource.proxy.id
   http_method             = aws_api_gateway_method.proxy_method.http_method
   
@@ -99,15 +120,15 @@ resource "aws_api_gateway_integration" "lb_integration" {
 
 # Root path method and integration
 resource "aws_api_gateway_method" "root_method" {
-  rest_api_id   = aws_api_gateway_rest_api.api.id
-  resource_id   = aws_api_gateway_rest_api.api.root_resource_id
+  rest_api_id   = local.rest_api_id
+  resource_id   = local.root_resource_id
   http_method   = "ANY"
   authorization = "NONE"
 }
 
 resource "aws_api_gateway_integration" "root_integration" {
-  rest_api_id = aws_api_gateway_rest_api.api.id
-  resource_id = aws_api_gateway_rest_api.api.root_resource_id
+  rest_api_id = local.rest_api_id
+  resource_id = local.root_resource_id
   http_method = aws_api_gateway_method.root_method.http_method
   
   type                    = "HTTP_PROXY"
@@ -122,14 +143,14 @@ resource "aws_api_gateway_integration" "root_integration" {
 
 # Enable CORS for the proxy resource
 resource "aws_api_gateway_method" "proxy_options" {
-  rest_api_id   = aws_api_gateway_rest_api.api.id
+  rest_api_id   = local.rest_api_id
   resource_id   = aws_api_gateway_resource.proxy.id
   http_method   = "OPTIONS"
   authorization = "NONE"
 }
 
 resource "aws_api_gateway_method_response" "proxy_options_response" {
-  rest_api_id = aws_api_gateway_rest_api.api.id
+  rest_api_id = local.rest_api_id
   resource_id = aws_api_gateway_resource.proxy.id
   http_method = aws_api_gateway_method.proxy_options.http_method
   status_code = "200"
@@ -142,7 +163,7 @@ resource "aws_api_gateway_method_response" "proxy_options_response" {
 }
 
 resource "aws_api_gateway_integration" "proxy_options_integration" {
-  rest_api_id = aws_api_gateway_rest_api.api.id
+  rest_api_id = local.rest_api_id
   resource_id = aws_api_gateway_resource.proxy.id
   http_method = aws_api_gateway_method.proxy_options.http_method
   type        = "MOCK"
@@ -153,7 +174,7 @@ resource "aws_api_gateway_integration" "proxy_options_integration" {
 }
 
 resource "aws_api_gateway_integration_response" "proxy_options_integration_response" {
-  rest_api_id = aws_api_gateway_rest_api.api.id
+  rest_api_id = local.rest_api_id
   resource_id = aws_api_gateway_resource.proxy.id
   http_method = aws_api_gateway_method.proxy_options.http_method
   status_code = aws_api_gateway_method_response.proxy_options_response.status_code
@@ -175,7 +196,7 @@ resource "aws_api_gateway_deployment" "deployment" {
     aws_api_gateway_integration_response.proxy_options_integration_response
   ]
   
-  rest_api_id = aws_api_gateway_rest_api.api.id
+  rest_api_id = local.rest_api_id
   
   # Use a timestamp to force redeployment when needed
   triggers = {
@@ -195,29 +216,16 @@ resource "aws_api_gateway_deployment" "deployment" {
   }
 }
 
-# Create dev and qa stages regardless of current environment
-resource "aws_api_gateway_stage" "dev" {
+# Create a dynamic stage based on the environment variable
+resource "aws_api_gateway_stage" "environment_stage" {
   deployment_id = aws_api_gateway_deployment.deployment.id
-  rest_api_id   = aws_api_gateway_rest_api.api.id
-  stage_name    = "dev"
+  rest_api_id   = local.rest_api_id
+  stage_name    = var.environment
   
   tags = merge(
     var.tags,
     {
-      Name = "Rizzlers-ApiGateway-DevStage"
-    }
-  )
-}
-
-resource "aws_api_gateway_stage" "qa" {
-  deployment_id = aws_api_gateway_deployment.deployment.id
-  rest_api_id   = aws_api_gateway_rest_api.api.id
-  stage_name    = "qa"
-  
-  tags = merge(
-    var.tags,
-    {
-      Name = "Rizzlers-ApiGateway-QaStage"
+      Name = "Rizzlers-ApiGateway-${title(var.environment)}Stage"
     }
   )
 }

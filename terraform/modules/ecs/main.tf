@@ -1,17 +1,6 @@
-resource "aws_ecs_cluster" "app_cluster" {
-  name = "${var.project_name}-cluster"
-  
-  setting {
-    name  = "containerInsights"
-    value = "enabled"
-  }
-  
-  tags = merge(
-    var.tags,
-    {
-      Name = "${var.project_name}-ECS-Cluster"
-    }
-  )
+# Reference the existing ECS cluster - don't create or destroy it
+data "aws_ecs_cluster" "existing_cluster" {
+  cluster_name = "rizzlers-cluster"
 }
 
 # CloudWatch Log Group for ECS
@@ -94,7 +83,7 @@ resource "aws_ecs_task_definition" "app_task" {
 
   container_definitions = jsonencode([
     {
-      name      = "${var.name_prefix}-container"
+      name      = "${var.name_prefix}-task-container"
       image     = "${var.ecr_repository}:latest"
       essential = true
       
@@ -109,7 +98,11 @@ resource "aws_ecs_task_definition" "app_task" {
       environment = [
         {
           name  = "SPRING_DATASOURCE_URL"
-          value = var.database_url
+          value = var.environment == "qa" ? var.qa_database_url : var.database_url
+        },
+        {
+          name  = "SPRING_DATASOURCE_URL_QA"
+          value = var.environment == "qa" ? var.qa_database_url : ""
         },
         {
           name  = "SPRING_DATASOURCE_USERNAME"
@@ -159,11 +152,11 @@ resource "aws_ecs_task_definition" "app_task" {
 # ECS Service
 resource "aws_ecs_service" "app_service" {
   name             = "${var.name_prefix}-service"
-  cluster          = aws_ecs_cluster.app_cluster.id
+  cluster          = data.aws_ecs_cluster.existing_cluster.id
   task_definition  = aws_ecs_task_definition.app_task.arn
   launch_type      = "FARGATE"
   platform_version = "LATEST"
-  desired_count    = 2
+  desired_count    = 3
   
   deployment_circuit_breaker {
     enable   = true
@@ -178,7 +171,7 @@ resource "aws_ecs_service" "app_service" {
   
   load_balancer {
     target_group_arn = var.target_group_arn
-    container_name   = "${var.name_prefix}-container"
+    container_name   = "${var.name_prefix}-task-container"
     container_port   = var.container_port
   }
   
@@ -204,8 +197,8 @@ resource "aws_ecs_service" "app_service" {
 # Auto Scaling
 resource "aws_appautoscaling_target" "ecs_target" {
   max_capacity       = 4
-  min_capacity       = 1
-  resource_id        = "service/${aws_ecs_cluster.app_cluster.name}/${aws_ecs_service.app_service.name}"
+  min_capacity       = 3
+  resource_id        = "service/${data.aws_ecs_cluster.existing_cluster.cluster_name}/${aws_ecs_service.app_service.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 }

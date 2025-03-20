@@ -1,11 +1,11 @@
 output "cluster_name" {
   description = "Name of the ECS cluster"
-  value       = aws_ecs_cluster.app_cluster.name
+  value       = data.aws_ecs_cluster.existing_cluster.cluster_name
 }
 
 output "cluster_id" {
   description = "ID of the ECS cluster"
-  value       = aws_ecs_cluster.app_cluster.id
+  value       = data.aws_ecs_cluster.existing_cluster.id
 }
 
 output "service_name" {

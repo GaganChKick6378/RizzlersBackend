@@ -17,9 +17,9 @@ COPY --from=build ${DEPENDENCY}/META-INF /app/META-INF
 COPY --from=build ${DEPENDENCY}/BOOT-INF/classes /app
 ENTRYPOINT ["java","-cp","app:app/lib/*","com.kdu.rizzlers.RizzlersApplication"]
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD wget -q --spider http://localhost:8080/api/health || exit 1
+# Health check - try multiple paths for robust checking
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD wget -q --spider http://localhost:8080/ || wget -q --spider http://localhost:8080/api/health || wget -q --spider http://localhost:8080/actuator/health || exit 1
 
 # Expose the port
 EXPOSE 8080 

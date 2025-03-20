@@ -145,6 +145,38 @@ jobs:
           echo "repo_url=${REPO_URL}" >> $GITHUB_OUTPUT
           echo "Clean Repository URL: ${REPO_URL}"
 
+      - name: Import Existing Resources
+        working-directory: ${{ env.TERRAFORM_DIR }}
+        run: |
+          # Function to try importing a resource and ignore errors
+          function try_import() {
+            local resource_address=$1
+            local resource_id=$2
+            echo "Attempting to import $resource_address with ID $resource_id"
+            terraform import -var="environment=${{ env.ENVIRONMENT }}" $resource_address $resource_id || echo "Import failed, resource may not exist yet"
+          }
+          
+          # Try to import core resources that need to be existing
+          try_import "module.ecs.data.aws_ecs_cluster.existing_cluster" "rizzlers-cluster" || true
+          
+          # Import API Gateway REST API - need to get its ID first
+          API_ID=$(aws apigateway get-rest-apis --query "items[?contains(name, 'rizzlers')].id" --output text || echo "")
+          if [ -n "$API_ID" ]; then
+            echo "Found API Gateway with ID: $API_ID"
+            try_import "module.api_gateway.data.aws_api_gateway_rest_api.existing_api" "$API_ID"
+            
+            # Get root resource ID for this API Gateway
+            ROOT_RESOURCE_ID=$(aws apigateway get-resources --rest-api-id "$API_ID" --query "items[?path=='/'].id" --output text || echo "")
+            if [ -n "$ROOT_RESOURCE_ID" ]; then
+              echo "Found root resource ID: $ROOT_RESOURCE_ID"
+              # We would need to handle this carefully in the module
+            fi
+          fi
+          
+          # Continue with existing resource imports...
+          # Security Group for API Gateway VPC Link
+          // ... existing code ...
+
   build-and-deploy:
     name: Build and Deploy
     needs: terraform
