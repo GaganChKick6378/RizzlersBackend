@@ -184,16 +184,15 @@ resource "aws_api_gateway_deployment" "deployment" {
   }
 }
 
-# Only create the qa stage since we're on the QA branch
-resource "aws_api_gateway_stage" "qa" {
+resource "aws_api_gateway_stage" "environment_stage" {
   deployment_id = aws_api_gateway_deployment.deployment.id
   rest_api_id   = data.aws_api_gateway_rest_api.existing_api.id
-  stage_name    = "qa"
+  stage_name    = var.environment
   
   tags = merge(
     var.tags,
     {
-      Name = "Rizzlers-ApiGateway-QaStage"
+      Name = "Rizzlers-ApiGateway-${title(var.environment)}Stage"
     }
   )
 }

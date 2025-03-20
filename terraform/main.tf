@@ -45,7 +45,7 @@ module "ecs" {
   vpc_id          = data.aws_vpc.kdu_vpc.id
   subnets         = local.private_subnet_ids
   security_group  = module.security_groups.ecs_sg_id
-  ecr_repository  = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/rizzlers-tf-qa"
+  ecr_repository  = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/rizzlers-tf-${var.environment}"
   container_port  = var.container_port
   health_check_path = var.health_check_path
   tags            = var.tags
@@ -89,7 +89,7 @@ module "nlb" {
 module "api_gateway" {
   source       = "./modules/api_gateway"
   project_name = var.project_name
-  environment  = "qa"  # Only targeting QA environment
+  environment  = var.environment
   aws_region   = var.aws_region
   load_balancer_dns = module.alb.alb_dns_name
   load_balancer_listener_arn = module.alb.http_listener_arn
