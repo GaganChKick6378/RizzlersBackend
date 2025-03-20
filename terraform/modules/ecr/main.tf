@@ -12,6 +12,17 @@ resource "aws_ecr_repository" "app_repo" {
       Name = "Rizzlers-ECR-${var.name}"
     }
   )
+  
+  # Prevent destruction of the ECR repository if it already exists
+  lifecycle {
+    prevent_destroy = true
+    # Ignore changes to these attributes to prevent unnecessary updates
+    ignore_changes = [
+      image_tag_mutability,
+      image_scanning_configuration,
+      tags
+    ]
+  }
 }
 
 resource "aws_ecr_lifecycle_policy" "app_repo_policy" {
@@ -33,4 +44,9 @@ resource "aws_ecr_lifecycle_policy" "app_repo_policy" {
       }
     ]
   })
+  
+  # Ignore changes to the lifecycle policy to prevent unnecessary updates
+  lifecycle {
+    ignore_changes = [policy]
+  }
 } 
