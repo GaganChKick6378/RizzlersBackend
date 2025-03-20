@@ -129,20 +129,117 @@ jobs:
           
           echo "Checking state for existing resources..."
           
-          # Remove shared resources from state - these should NOT be managed by Terraform directly
-          # This prevents Terraform from trying to destroy them when environment changes
+          # Get common IDs and information
+          VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=${{ env.TF_VAR_vpc_name }}" --query "Vpcs[0].VpcId" --output text)
+          echo "VPC ID: $VPC_ID"
+          
+          # FIRST: Remove all resources from state that are causing "already exists" errors
+          # This prevents Terraform from trying to destroy or recreate them
+          
+          # 1. Remove all security groups
+          safe_state_rm "module.security_groups.aws_security_group.alb_sg"
+          safe_state_rm "module.security_groups.aws_security_group.ecs_sg"
+          safe_state_rm "module.security_groups.aws_security_group.nlb_sg"
+          safe_state_rm "module.api_gateway.aws_security_group.vpce_sg"
+          
+          # 2. Remove all IAM roles
+          safe_state_rm "module.ecs.aws_iam_role.ecs_task_execution_role"
+          safe_state_rm "module.ecs.aws_iam_role.ecs_task_role"
+          
+          # 3. Remove all CloudWatch log groups
+          safe_state_rm "module.ecs.aws_cloudwatch_log_group.ecs_logs"
+          safe_state_rm "module.cloudwatch.aws_cloudwatch_log_group.app_logs"
+          safe_state_rm "module.api_gateway.aws_cloudwatch_log_group.api_logs"
+          
+          # 4. Remove all Target Groups
+          safe_state_rm "module.alb.aws_lb_target_group.app_tg"
+          safe_state_rm "module.nlb.aws_lb_target_group.alb_target_group"
+          
+          # 5. Remove shared resources
           safe_state_rm "module.ecs.aws_ecs_cluster.app_cluster"
+          safe_state_rm "module.api_gateway.aws_api_gateway_rest_api.api"
           
-          # Try to import the existing ECS cluster as a data source
-          try_import "module.ecs.data.aws_ecs_cluster.existing_cluster" "rizzlers-cluster"
+          # 6. Remove all load balancers
+          safe_state_rm "module.alb.aws_lb.alb"
+          safe_state_rm "module.nlb.aws_lb.nlb"
           
-          # Import API Gateway REST API if it exists
-          API_ID=$(aws apigateway get-rest-apis --query "items[?contains(name, 'rizzlers')].id" --output text || echo "")
+          echo "✅ Removed all existing resources from Terraform state"
+          
+          # SECOND: Try to import existing resources as data sources
+          
+          # 1. Import ECS cluster
+          try_import "module.ecs.data.aws_ecs_cluster.existing_cluster" "${{ env.ECS_CLUSTER }}"
+          
+          # 2. Fix the API Gateway issue by getting the exact name
+          # Instead of using a data source with a partial name match (which is causing the error),
+          # find the API gateway first and then import it exactly
+          API_NAME="${{ env.TF_VAR_project_name }}-api"
+          API_ID=$(aws apigateway get-rest-apis --query "items[?name=='$API_NAME'].id" --output text || echo "")
+          
           if [ -n "$API_ID" ]; then
-            echo "Found API Gateway with ID: $API_ID"
-            safe_state_rm "module.api_gateway.aws_api_gateway_rest_api.api"
+            echo "Found API Gateway with ID: $API_ID and exact name: $API_NAME"
+            
+            # Update the data source definition with a more specific name constraint
+            cat << EOF > api_data_fix.tf
+          # Data source for API Gateway REST API that requires exact name match
+          data "aws_api_gateway_rest_api" "existing_api" {
+            name = "$API_NAME"
+          }
+          EOF
+            
+            # Try to import with the exact ID
             try_import "module.api_gateway.data.aws_api_gateway_rest_api.existing_api" "$API_ID"
+          else
+            echo "⚠️ Could not find API Gateway with name: $API_NAME. Will let Terraform create it."
           fi
+          
+          # 3. Try to import existing security groups by name
+          SG_ALB_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=rizzlers-tf-dev-alb-sg" "Name=vpc-id,Values=$VPC_ID" --query "SecurityGroups[0].GroupId" --output text || echo "")
+          if [ -n "$SG_ALB_ID" ] && [ "$SG_ALB_ID" != "None" ]; then
+            try_import "module.security_groups.aws_security_group.alb_sg" "$SG_ALB_ID"
+          fi
+          
+          SG_ECS_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=rizzlers-tf-dev-ecs-sg" "Name=vpc-id,Values=$VPC_ID" --query "SecurityGroups[0].GroupId" --output text || echo "")
+          if [ -n "$SG_ECS_ID" ] && [ "$SG_ECS_ID" != "None" ]; then
+            try_import "module.security_groups.aws_security_group.ecs_sg" "$SG_ECS_ID"
+          fi
+          
+          SG_VPCE_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=rizzlers-tf-dev-vpce-sg" "Name=vpc-id,Values=$VPC_ID" --query "SecurityGroups[0].GroupId" --output text || echo "")
+          if [ -n "$SG_VPCE_ID" ] && [ "$SG_VPCE_ID" != "None" ]; then
+            try_import "module.api_gateway.aws_security_group.vpce_sg" "$SG_VPCE_ID"
+          fi
+          
+          # 4. Try to import existing CloudWatch log groups
+          try_import "module.ecs.aws_cloudwatch_log_group.ecs_logs" "/ecs/rizzlers-tf-dev" 
+          try_import "module.cloudwatch.aws_cloudwatch_log_group.app_logs" "/app/rizzlers-tf-dev"
+          
+          # 5. Try to import existing IAM roles
+          try_import "module.ecs.aws_iam_role.ecs_task_execution_role" "rizzlers-tf-dev-task-execution-role"
+          try_import "module.ecs.aws_iam_role.ecs_task_role" "rizzlers-tf-dev-task-role"
+          
+          # 6. Try to import target groups
+          ALB_TG_ARN=$(aws elbv2 describe-target-groups --names "rizzlers-tf-dev-tg" --query "TargetGroups[0].TargetGroupArn" --output text 2>/dev/null || echo "")
+          if [ -n "$ALB_TG_ARN" ] && [ "$ALB_TG_ARN" != "None" ]; then
+            try_import "module.alb.aws_lb_target_group.app_tg" "$ALB_TG_ARN"
+          fi
+          
+          NLB_TG_ARN=$(aws elbv2 describe-target-groups --names "rizzlers-tf-dev-alb-tg-v2" --query "TargetGroups[0].TargetGroupArn" --output text 2>/dev/null || echo "")
+          if [ -n "$NLB_TG_ARN" ] && [ "$NLB_TG_ARN" != "None" ]; then
+            try_import "module.nlb.aws_lb_target_group.alb_target_group" "$NLB_TG_ARN"
+          fi
+          
+          # 7. Try to import load balancers
+          ALB_ARN=$(aws elbv2 describe-load-balancers --names "rizzlers-tf-dev-alb" --query "LoadBalancers[0].LoadBalancerArn" --output text 2>/dev/null || echo "")
+          if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ]; then
+            try_import "module.alb.aws_lb.alb" "$ALB_ARN"
+          fi
+          
+          NLB_ARN=$(aws elbv2 describe-load-balancers --names "rizzlers-tf-dev-nlb" --query "LoadBalancers[0].LoadBalancerArn" --output text 2>/dev/null || echo "")
+          if [ -n "$NLB_ARN" ] && [ "$NLB_ARN" != "None" ]; then
+            try_import "module.nlb.aws_lb.nlb" "$NLB_ARN"
+          fi
+          
+          echo "✅ Finished importing existing resources"
           
           # Run a plan to catch any other issues
           terraform plan -var="environment=dev" -out=tfplan
@@ -150,7 +247,7 @@ jobs:
           # Check for destroy operations in the plan
           DESTROY_OPS=$(terraform show -json tfplan | jq -r '.resource_changes[] | select(.change.actions | contains(["delete"]))' | wc -l)
           if [ "$DESTROY_OPS" -gt "0" ]; then
-            echo "WARNING: Plan contains resource destructions! Automatically removing these from state to prevent destruction."
+            echo "⚠️ WARNING: Plan contains resource destructions! Automatically removing these from state to prevent destruction."
             
             # Get resources that would be destroyed and remove them from state
             terraform show -json tfplan | jq -r '.resource_changes[] | select(.change.actions | contains(["delete"])) | .address' | while read addr; do
@@ -161,7 +258,7 @@ jobs:
             # Re-plan after state adjustments
             terraform plan -var="environment=dev" -out=tfplan
           else
-            echo "Plan looks good - no resource destructions detected."
+            echo "✅ Plan looks good - no resource destructions detected."
           fi
 
       - name: Terraform Validate
@@ -176,15 +273,26 @@ jobs:
         if: github.event_name == 'push'
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: |
-          # Use targetted apply to avoid touching critical resources
+          # Copy the API Gateway data source fix if it exists
+          if [ -f "api_data_fix.tf" ]; then
+            echo "Applying fix for API Gateway data source"
+            cp api_data_fix.tf modules/api_gateway/api_data_fix.tf
+          fi
+          
+          # Use targeted apply with -refresh=false to avoid touching existing resources
+          echo "Applying only non-existing resources to avoid conflicts..."
           terraform apply -auto-approve -var="environment=dev" \
-            -target=module.security_groups \
-            -target=module.alb \
-            -target=module.nlb \
-            -target=module.api_gateway \
-            -target=module.cloudwatch \
+            -refresh=false \
             -target=module.ecs.aws_ecs_task_definition.app_task \
             -target=module.ecs.aws_ecs_service.app_service
+          
+          # Specific apply for resources that might need updates but not recreation
+          echo "Updating non-critical resources that may need configuration changes..."
+          terraform apply -auto-approve -var="environment=dev" \
+            -refresh=false \
+            -target=module.api_gateway.aws_api_gateway_stage.environment_stage
+          
+          echo "✅ Infrastructure changes applied successfully"
 
       - name: Terraform Output to File
         if: github.event_name == 'push'
