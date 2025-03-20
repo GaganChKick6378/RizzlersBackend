@@ -22,12 +22,13 @@ env:
   TF_VAR_private_subnet_ids: ${{ secrets.TF_VAR_PRIVATE_SUBNET_IDS }}
   # Hardcoded ECS resource names based on resource_name_prefix pattern
   ECS_CLUSTER: "rizzlers-cluster"
-  ECS_SERVICE: "rizzlers-tf-qa-service"
-  ECS_TASK_DEFINITION: "rizzlers-tf-qa-task"
-  # Hardcoded ECR repository name
-  ECR_REPOSITORY_NAME: "rizzlers-tf-qa"
+  ECS_SERVICE: "rizzlers-tf-${TF_VAR_environment}-service"
+  ECS_TASK_DEFINITION: "rizzlers-tf-${TF_VAR_environment}-task"
+  # ECR repository name based on environment
+  ECR_REPOSITORY_NAME: "rizzlers-tf-${TF_VAR_environment}"
   # QA specific database configuration
-  TF_VAR_database_url: ${{ secrets.QA_DATABASE_URL }}
+  TF_VAR_database_url: ${{ secrets.DB_URL_DEV }}
+  TF_VAR_qa_database_url: ${{ secrets.QA_DATABASE_URL }}
   TF_VAR_database_username: ${{ secrets.DB_USERNAME }}
   TF_VAR_database_password: ${{ secrets.DB_PASSWORD }}
   # GraphQL Configuration
@@ -71,7 +72,9 @@ jobs:
 
       - name: Terraform Init
         working-directory: ${{ env.TERRAFORM_DIR }}
-        run: terraform init
+        run: |
+          # Explicitly initialize with a QA-specific backend state file
+          terraform init -reconfigure
 
       - name: Terraform Format
         working-directory: ${{ env.TERRAFORM_DIR }}
@@ -406,64 +409,101 @@ jobs:
 
       - name: Update ECS Task Definition
         run: |
-          # Get the current task definition
-          TASK_DEF=$(aws ecs describe-task-definition --task-definition ${{ env.ECS_TASK_DEFINITION }} --query 'taskDefinition' 2>/dev/null || echo '{}')
+          echo "Checking for latest active task definition..."
+          LATEST_TASK_DEF_ARN=$(aws ecs list-task-definitions --family-prefix ${{ env.ECS_TASK_DEFINITION }} --status ACTIVE --sort DESC --max-items 1 --query 'taskDefinitionArns[0]' --output text)
+          
+          if [ -z "$LATEST_TASK_DEF_ARN" ] || [ "$LATEST_TASK_DEF_ARN" == "None" ]; then
+            echo "No active task definition found. Will need to create one from scratch."
+            TASK_DEF="{}"
+          else
+            echo "Found latest task definition: $LATEST_TASK_DEF_ARN"
+            # Get the current task definition
+            TASK_DEF=$(aws ecs describe-task-definition --task-definition $LATEST_TASK_DEF_ARN --query 'taskDefinition' 2>/dev/null || echo '{}')
+          fi
 
           if [ "$TASK_DEF" = "{}" ]; then
-            echo "Task definition not found, skipping update"
+            echo "Task definition not found or empty, skipping update"
           else
-            echo "Found task definition ${{ env.ECS_TASK_DEFINITION }}, checking container image..."
+            echo "Checking container image..."
             
             # Extract container definition and image
-            CONTAINER_NAME="${{ env.ECS_TASK_DEFINITION }}-container"
-            CONTAINER_DEF=$(echo "$TASK_DEF" | jq -r --arg name "$CONTAINER_NAME" '.containerDefinitions[] | select(.name==$name)')
-            CURRENT_IMAGE=$(echo "$CONTAINER_DEF" | jq -r '.image')
+            CONTAINER_NAME="${{ env.TF_VAR_resource_name_prefix }}-task-container"
+            echo "Container name: $CONTAINER_NAME"
+            
+            CONTAINER_DEF=$(echo "$TASK_DEF" | jq -r --arg name "$CONTAINER_NAME" '.containerDefinitions[] | select(.name==$name)' 2>/dev/null || echo "{}")
+            if [ "$CONTAINER_DEF" = "{}" ]; then
+              echo "Container definition not found with name $CONTAINER_NAME"
+              # Try alternative container name for backward compatibility
+              CONTAINER_NAME="${{ env.ECS_TASK_DEFINITION }}-container"
+              echo "Trying alternative container name: $CONTAINER_NAME"
+              CONTAINER_DEF=$(echo "$TASK_DEF" | jq -r --arg name "$CONTAINER_NAME" '.containerDefinitions[] | select(.name==$name)' 2>/dev/null || echo "{}")
+            fi
+            
+            if [ "$CONTAINER_DEF" = "{}" ]; then
+              echo "Container definition still not found. Using the first container in the task definition."
+              CONTAINER_DEF=$(echo "$TASK_DEF" | jq -r '.containerDefinitions[0]' 2>/dev/null || echo "{}")
+              if [ -n "$CONTAINER_DEF" ] && [ "$CONTAINER_DEF" != "{}" ]; then
+                CONTAINER_NAME=$(echo "$CONTAINER_DEF" | jq -r '.name')
+                echo "Using container name: $CONTAINER_NAME"
+              else
+                echo "No container definitions found in task definition."
+                exit 1
+              fi
+            fi
+            
+            CURRENT_IMAGE=$(echo "$CONTAINER_DEF" | jq -r '.image' 2>/dev/null || echo "")
             
             echo "Current container image: $CURRENT_IMAGE"
             echo "New container image: $FULL_IMAGE_URI"
             
-            if [ "$CURRENT_IMAGE" != "$FULL_IMAGE_URI" ]; then
-              echo "Updating task definition with new image..."
-              
-              # Update the task definition with improved configuration
-              TASK_DEF_JSON=$(echo "$TASK_DEF" | jq --arg image "$FULL_IMAGE_URI" --arg name "$CONTAINER_NAME" '
-                .containerDefinitions = [.containerDefinitions[] | 
-                  if .name == $name then 
-                    .image = $image | 
-                    .logConfiguration = {
-                      "logDriver": "awslogs",
-                      "options": {
-                        "awslogs-group": "/ecs/${{ env.ECS_TASK_DEFINITION }}",
-                        "awslogs-region": "${{ env.AWS_REGION }}",
-                        "awslogs-stream-prefix": "ecs",
-                        "awslogs-create-group": "true"
-                      }
-                    } |
-                    .healthCheck = {
-                      "command": ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health || exit 1"],
-                      "interval": 30,
-                      "timeout": 5,
-                      "retries": 3,
-                      "startPeriod": 60
-                    } |
-                    .environment = [
-                      {"name": "SPRING_PROFILES_ACTIVE", "value": "qa"},
-                      {"name": "SERVER_PORT", "value": "8080"},
-                      {"name": "SPRING_DATASOURCE_URL_QA", "value": "${{ env.TF_VAR_database_url }}"},
-                      {"name": "SPRING_DATASOURCE_USERNAME", "value": "${{ env.TF_VAR_database_username }}"},
-                      {"name": "SPRING_DATASOURCE_PASSWORD", "value": "${{ env.TF_VAR_database_password }}"}
-                    ]
-                  else . end
-                ] | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
-              ')
-              
-              echo "New task definition: $TASK_DEF_JSON"
-              
-              # Register the new task definition
-              aws ecs register-task-definition --cli-input-json "$TASK_DEF_JSON"
-            else
-              echo "Image is already up to date, no need to update task definition"
-            fi
+            # Always update to make sure we have the latest environment variables and settings
+            echo "Updating task definition with new configuration..."
+            
+            # Update the task definition with improved configuration
+            TASK_DEF_JSON=$(echo "$TASK_DEF" | jq --arg image "$FULL_IMAGE_URI" --arg name "$CONTAINER_NAME" '
+              .containerDefinitions = [.containerDefinitions[] | 
+                if .name == $name then 
+                  .image = $image | 
+                  .logConfiguration = {
+                    "logDriver": "awslogs",
+                    "options": {
+                      "awslogs-group": "/ecs/${{ env.TF_VAR_resource_name_prefix }}",
+                      "awslogs-region": "${{ env.AWS_REGION }}",
+                      "awslogs-stream-prefix": "ecs",
+                      "awslogs-create-group": "true"
+                    }
+                  } |
+                  .healthCheck = {
+                    "command": ["CMD-SHELL", "wget -q --spider http://localhost:8080/api/actuator/health || exit 1"],
+                    "interval": 30,
+                    "timeout": 5,
+                    "retries": 3,
+                    "startPeriod": 60
+                  } |
+                  .environment = [
+                    {"name": "SPRING_PROFILES_ACTIVE", "value": "qa"},
+                    {"name": "SERVER_PORT", "value": "8080"},
+                    {"name": "SPRING_DATASOURCE_URL", "value": "${{ env.TF_VAR_database_url }}"},
+                    {"name": "SPRING_DATASOURCE_URL_QA", "value": "${{ env.TF_VAR_qa_database_url }}"},
+                    {"name": "SPRING_DATASOURCE_USERNAME", "value": "${{ env.TF_VAR_database_username }}"},
+                    {"name": "SPRING_DATASOURCE_PASSWORD", "value": "${{ env.TF_VAR_database_password }}"},
+                    {"name": "GRAPHQL_ENDPOINT", "value": "${{ env.GRAPHQL_ENDPOINT }}"},
+                    {"name": "GRAPHQL_API_KEY", "value": "${{ env.GRAPHQL_API_KEY }}"}
+                  ]
+                else . end
+              ] | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
+            ')
+            
+            echo "New task definition prepared. Registering new revision..."
+            
+            # Register the new task definition
+            REGISTER_RESULT=$(aws ecs register-task-definition --cli-input-json "$TASK_DEF_JSON")
+            NEW_TASK_DEF_ARN=$(echo "$REGISTER_RESULT" | jq -r '.taskDefinition.taskDefinitionArn')
+            
+            echo "Successfully registered new task definition: $NEW_TASK_DEF_ARN"
+            
+            # Save the new task definition ARN to use later
+            echo "NEW_TASK_DEF_ARN=$NEW_TASK_DEF_ARN" >> $GITHUB_ENV
           fi
 
       - name: Apply ECS Service
@@ -492,8 +532,30 @@ jobs:
             terraform apply -auto-approve -var="environment=qa" \
               -target=module.ecs.aws_ecs_service.app_service || echo "Ignoring ECS service errors"
           else
-            echo "Service exists, updating with force-new-deployment"
-            aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --force-new-deployment
+            echo "Service exists, finding task definition to use..."
+            
+            # Use the newly registered task definition if available
+            if [ -n "$NEW_TASK_DEF_ARN" ]; then
+              echo "Using newly registered task definition: $NEW_TASK_DEF_ARN"
+              TASK_DEF_TO_USE=$NEW_TASK_DEF_ARN
+            else
+              # Find the latest active task definition revision if we didn't register a new one
+              LATEST_TASK_DEF_ARN=$(aws ecs list-task-definitions --family-prefix ${{ env.ECS_TASK_DEFINITION }} --status ACTIVE --sort DESC --max-items 1 --query 'taskDefinitionArns[0]' --output text)
+              
+              if [ -n "$LATEST_TASK_DEF_ARN" ] && [ "$LATEST_TASK_DEF_ARN" != "None" ]; then
+                echo "Found latest active task definition: $LATEST_TASK_DEF_ARN"
+                TASK_DEF_TO_USE=$LATEST_TASK_DEF_ARN
+              else
+                echo "No active task definitions found for ${{ env.ECS_TASK_DEFINITION }}"
+                TASK_DEF_TO_USE=${{ env.ECS_TASK_DEFINITION }}
+              fi
+            fi
+            
+            # Update the service to use the task definition and force a new deployment
+            echo "Updating service with task definition: $TASK_DEF_TO_USE"
+            aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --task-definition $TASK_DEF_TO_USE --force-new-deployment
+            
+            echo "Service updated successfully"
           fi
 
       - name: Wait for Service to Stabilize
