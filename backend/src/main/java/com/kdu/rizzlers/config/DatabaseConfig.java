@@ -23,12 +23,8 @@ public class DatabaseConfig {
     public DataSource dataSource() {
         DriverManagerDataSource dataSource = new DriverManagerDataSource();
         
-        // Get driver class name from environment or use default for PostgreSQL
-        String driverClassName = System.getenv("SPRING_DATASOURCE_DRIVER_CLASS_NAME");
-        if (driverClassName == null || driverClassName.isEmpty()) {
-            driverClassName = env.getProperty("spring.datasource.driver-class-name", "org.postgresql.Driver");
-        }
-        dataSource.setDriverClassName(driverClassName);
+        // Hardcode PostgreSQL driver instead of getting from environment
+        dataSource.setDriverClassName("org.postgresql.Driver");
         
         // Get active profile - first check environment variable, then property
         String activeProfile = System.getenv("SPRING_PROFILES_ACTIVE");
