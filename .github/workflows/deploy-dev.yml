@@ -50,6 +50,8 @@ jobs:
           # Container configuration
           container_port     = 8080
           health_check_path  = "/api/health"
+          allowed_origins    = "http://localhost:3000,https://d327h6huibdsc6.cloudfront.net/,chrome-extension://gmehhhfompinmcoabokhckceachkjmha"
+          ENV                = "dev"
 
           # Database configuration
           database_url       = "${{ secrets.DB_URL_DEV }}"
@@ -114,12 +116,14 @@ jobs:
         run: |
           # Build a docker container and push it to ECR
           docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG \
-            --build-arg DB_URL="${{ secrets.DB_URL_DEV }}" \
-            --build-arg DB_USERNAME="${{ secrets.DB_USERNAME }}" \
-            --build-arg DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
-            --build-arg ENVIRONMENT="dev" \
-            --build-arg GRAPHQL_ENDPOINT="${{ secrets.GRAPHQL_ENDPOINT }}" \
-            --build-arg GRAPHQL_API_KEY="${{ secrets.GRAPHQL_API_KEY }}" \
+            --build-arg database_url="${{ secrets.DB_URL_DEV }}" \
+            --build-arg database_username="${{ secrets.DB_USERNAME }}" \
+            --build-arg database_password="${{ secrets.DB_PASSWORD }}" \
+            --build-arg graphql_endpoint="${{ secrets.GRAPHQL_ENDPOINT }}" \
+            --build-arg graphql_api_key="${{ secrets.GRAPHQL_API_KEY }}" \
+            --build-arg container_port="8080" \
+            --build-arg allowed_origins="http://localhost:3000,https://d327h6huibdsc6.cloudfront.net/,chrome-extension://gmehhhfompinmcoabokhckceachkjmha" \
+            --build-arg ENV="dev" \
             .
           docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
           docker tag $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
