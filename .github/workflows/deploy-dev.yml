@@ -58,10 +58,8 @@ jobs:
 
           # VPC and networking
           vpc_name          = "KDU-25-VPC"
-          public_subnet_ids = ${{ secrets.PUBLIC_SUBNET_IDS }}
-          private_subnet_ids = ${{ secrets.PRIVATE_SUBNET_IDS }}
-          # Resource configuration
-          use_existing_resources = false
+          public_subnet_ids  = ${{ secrets.TF_VAR_PUBLIC_SUBNET_IDS }}
+          private_subnet_ids = ${{ secrets.TF_VAR_PRIVATE_SUBNET_IDS }}
 
           # Tags
           tags = {
@@ -73,7 +71,9 @@ jobs:
 
       - name: Terraform Plan
         id: plan
-        run: terraform plan -var-file=dev.tfvars -out=tfplan
+        run: | 
+          cat dev.tfvars
+          terraform plan -var-file=dev.tfvars -out=tfplan
 
       - name: Terraform Apply
         run: terraform apply -auto-approve tfplan
