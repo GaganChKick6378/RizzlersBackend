@@ -1,6 +1,13 @@
-# Reference the existing ECS cluster - don't create or destroy it
-data "aws_ecs_cluster" "existing_cluster" {
-  cluster_name = "rizzlers-cluster"
+# Create a new ECS cluster using the name_prefix instead of using an existing one
+resource "aws_ecs_cluster" "cluster" {
+  name = "${var.name_prefix}-cluster"
+  
+  setting {
+    name  = "containerInsights"
+    value = "enabled"
+  }
+  
+  tags = var.tags
 }
 
 # CloudWatch Log Group for ECS
@@ -8,12 +15,7 @@ resource "aws_cloudwatch_log_group" "ecs_logs" {
   name              = "/ecs/${var.name_prefix}"
   retention_in_days = 30
   
-  tags = merge(
-    var.tags,
-    {
-      Name = "Rizzlers-ECS-Logs-${var.environment}"
-    }
-  )
+  tags = var.tags
 }
 
 # Task Execution Role
@@ -33,12 +35,7 @@ resource "aws_iam_role" "ecs_task_execution_role" {
     ]
   })
   
-  tags = merge(
-    var.tags,
-    {
-      Name = "Rizzlers-ECS-ExecutionRole-${var.environment}"
-    }
-  )
+  tags = var.tags
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" {
@@ -63,12 +60,7 @@ resource "aws_iam_role" "ecs_task_role" {
     ]
   })
   
-  tags = merge(
-    var.tags,
-    {
-      Name = "Rizzlers-ECS-TaskRole-${var.environment}"
-    }
-  )
+  tags = var.tags
 }
 
 # Task Definition
@@ -83,7 +75,7 @@ resource "aws_ecs_task_definition" "app_task" {
 
   container_definitions = jsonencode([
     {
-      name      = "${var.name_prefix}-task-container"
+      name      = "${var.name_prefix}-container"
       image     = "${var.ecr_repository}:latest"
       essential = true
       
@@ -98,11 +90,7 @@ resource "aws_ecs_task_definition" "app_task" {
       environment = [
         {
           name  = "SPRING_DATASOURCE_URL"
-          value = var.environment == "qa" ? var.qa_database_url : var.database_url
-        },
-        {
-          name  = "SPRING_DATASOURCE_URL_QA"
-          value = var.environment == "qa" ? var.qa_database_url : ""
+          value = var.database_url
         },
         {
           name  = "SPRING_DATASOURCE_USERNAME"
@@ -114,7 +102,7 @@ resource "aws_ecs_task_definition" "app_task" {
         },
         {
           name  = "APPLICATION_ENVIRONMENT"
-          value = var.environment == "dev" ? "Development" : "Testing"
+          value = var.environment
         },
         {
           name  = "SPRING_PROFILES_ACTIVE"
@@ -141,18 +129,13 @@ resource "aws_ecs_task_definition" "app_task" {
     }
   ])
   
-  tags = merge(
-    var.tags,
-    {
-      Name = "Rizzlers-ECS-TaskDef-${var.environment}"
-    }
-  )
+  tags = var.tags
 }
 
 # ECS Service
 resource "aws_ecs_service" "app_service" {
   name             = "${var.name_prefix}-service"
-  cluster          = data.aws_ecs_cluster.existing_cluster.id
+  cluster          = aws_ecs_cluster.cluster.id
   task_definition  = aws_ecs_task_definition.app_task.arn
   launch_type      = "FARGATE"
   platform_version = "LATEST"
@@ -171,7 +154,7 @@ resource "aws_ecs_service" "app_service" {
   
   load_balancer {
     target_group_arn = var.target_group_arn
-    container_name   = "${var.name_prefix}-task-container"
+    container_name   = "${var.name_prefix}-container"
     container_port   = var.container_port
   }
   
@@ -179,16 +162,8 @@ resource "aws_ecs_service" "app_service" {
     type = "ECS"
   }
   
-  tags = merge(
-    var.tags,
-    {
-      Name = "Rizzlers-ECS-Service-${var.environment}"
-    }
-  )
+  tags = var.tags
   
-  lifecycle {
-    ignore_changes = [desired_count]
-  }
   
   # Ensure that the service waits for the ALB to be ready
   depends_on = [var.load_balancer_listener_arn]
@@ -198,7 +173,7 @@ resource "aws_ecs_service" "app_service" {
 resource "aws_appautoscaling_target" "ecs_target" {
   max_capacity       = 4
   min_capacity       = 3
-  resource_id        = "service/${data.aws_ecs_cluster.existing_cluster.cluster_name}/${aws_ecs_service.app_service.name}"
+  resource_id        = "service/${aws_ecs_cluster.cluster.name}/${aws_ecs_service.app_service.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 }

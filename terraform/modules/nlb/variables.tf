@@ -35,6 +35,11 @@ variable "listener_port" {
   default     = 80
 }
 
+variable "alb_listener_arn" {
+  description = "The ARN of the ALB listener"
+  type        = string
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

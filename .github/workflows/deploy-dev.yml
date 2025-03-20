@@ -1,0 +1,146 @@
+name: Deploy to Development Environment
+
+on:
+  push:
+    branches:
+      - dev
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY: ibe-rizzlers-dev
+
+jobs:
+  terraform:
+    name: "Deploy Infrastructure"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./terraform
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Select Dev Workspace
+        run: terraform workspace select dev || terraform workspace new dev
+
+      - name: Create dev.tfvars file
+        run: |
+          cat > dev.tfvars <<EOF
+          # General configuration
+          aws_region   = "${{ env.AWS_REGION }}"
+          project_name = "IBE"
+          team_name    = "rizzlers"
+
+          # Container configuration
+          container_port     = 8080
+          health_check_path  = "/api/health"
+
+          # Database configuration
+          database_url       = "${{ secrets.DB_URL_DEV }}"
+          database_username  = "${{ secrets.DB_USERNAME }}"
+          database_password  = "${{ secrets.DB_PASSWORD }}"
+
+          # VPC and networking
+          vpc_name          = "KDU-25-VPC"
+          public_subnet_ids = ${{ secrets.PUBLIC_SUBNET_IDS }}
+          private_subnet_ids = ${{ secrets.PRIVATE_SUBNET_IDS }}
+          # Resource configuration
+          use_existing_resources = false
+
+          # Tags
+          tags = {
+            Name    = "Rizzlers-Backend"
+            Creator = "RizzlersTeam"
+            Purpose = "IBE"
+          }
+          EOF
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -var-file=dev.tfvars -out=tfplan
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+
+      - name: Save Terraform Outputs
+        id: terraform-outputs
+        run: |
+          echo "ECR_REPOSITORY_URL=$(terraform output -raw ecr_repository_url)" >> $GITHUB_ENV
+
+  build-and-deploy:
+    name: "Build and Deploy Backend"
+    needs: terraform
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Build a docker container and push it to ECR
+          docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG \
+            --build-arg DB_URL="${{ secrets.DB_URL_DEV }}" \
+            --build-arg DB_USERNAME="${{ secrets.DB_USERNAME }}" \
+            --build-arg DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
+            --build-arg ENVIRONMENT="dev" \
+            --build-arg GRAPHQL_ENDPOINT="${{ secrets.GRAPHQL_ENDPOINT }}" \
+            --build-arg GRAPHQL_API_KEY="${{ secrets.GRAPHQL_API_KEY }}" \
+            .
+          docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
+          docker tag $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+          docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+          echo "::set-output name=image::$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG"
+
+      - name: Update ECS service
+        run: |
+          CLUSTER_NAME="ibe-rizzlers-dev-cluster"
+          SERVICE_NAME="ibe-rizzlers-dev-service"
+          
+          # Force new deployment on ECS to pick up the latest image
+          aws ecs update-service --cluster $CLUSTER_NAME --service $SERVICE_NAME --force-new-deployment
+
+      - name: Wait for ECS Service to Stabilize
+        run: |
+          CLUSTER_NAME="ibe-rizzlers-dev-cluster"
+          SERVICE_NAME="ibe-rizzlers-dev-service"
+          
+          # Wait for service to stabilize
+          aws ecs wait services-stable --cluster $CLUSTER_NAME --services $SERVICE_NAME
+
+      - name: Deployment Summary
+        run: |
+          echo "✅ Development Deployment completed successfully"
+          echo "Image: ${{ steps.build-image.outputs.image }}"
+          echo "Deployment time: $(date)" 

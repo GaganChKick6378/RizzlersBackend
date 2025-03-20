@@ -1,37 +1,18 @@
+# Create API Gateway for dev environment
 resource "aws_api_gateway_rest_api" "api" {
   name        = "${var.name_prefix}-api"
-  description = "Rizzlers REST API Gateway"
+  description = "Dev Environment REST API Gateway"
   
   endpoint_configuration {
     types = ["REGIONAL"]
   }
   
-  tags = merge(
-    var.tags,
-    {
-      Name = "Rizzlers-ApiGateway"
-    }
-  )
-}
-
-# Data source for accessing an existing API Gateway REST API
-# This is used when we're referencing an API that already exists in the account
-# If this fails, the module will fall back to the newly created API
-data "aws_api_gateway_rest_api" "existing_api" {
-  name = "${var.project_name}-api"
-
-  # Make it depend on the API creation to handle the case
-  # when we're creating the API for the first time
-  depends_on = [aws_api_gateway_rest_api.api]
+  tags = var.tags
 }
 
 # Local variable to determine which API ID to use
 locals {
-  # Use the existing API if found, otherwise use the newly created one
-  rest_api_id = try(data.aws_api_gateway_rest_api.existing_api.id, aws_api_gateway_rest_api.api.id)
-  
-  # Root resource ID - always use the newly created API for this since data source doesn't provide it
-  # We'll need to handle this carefully in imports
+  rest_api_id = aws_api_gateway_rest_api.api.id
   root_resource_id = aws_api_gateway_rest_api.api.root_resource_id
 }
 
@@ -39,13 +20,7 @@ locals {
 resource "aws_api_gateway_vpc_link" "link" {
   name        = "${var.name_prefix}-vpce-link"
   target_arns = [var.nlb_arn]
-  
-  tags = merge(
-    var.tags,
-    {
-      Name = "Rizzlers-ApiGateway-VpcLink"
-    }
-  )
+  tags        = var.tags
 }
 
 # Security group for VPC Link
@@ -54,12 +29,7 @@ resource "aws_security_group" "vpce_sg" {
   description = "Security group for API Gateway VPC Link"
   vpc_id      = var.vpc_id
   
-  tags = merge(
-    var.tags,
-    {
-      Name = "Rizzlers-ApiGateway-SG"
-    }
-  )
+  tags = var.tags
 }
 
 resource "aws_security_group_rule" "vpce_egress" {
@@ -73,46 +43,35 @@ resource "aws_security_group_rule" "vpce_egress" {
 
 # API resource for the proxy integration
 resource "aws_api_gateway_resource" "proxy" {
-  rest_api_id = local.rest_api_id
-  parent_id   = local.root_resource_id
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  parent_id   = aws_api_gateway_rest_api.api.root_resource_id
   path_part   = "{proxy+}"
 }
 
 # Setup a method for the proxy resource with ANY HTTP method
 resource "aws_api_gateway_method" "proxy_method" {
-  rest_api_id   = local.rest_api_id
+  rest_api_id   = aws_api_gateway_rest_api.api.id
   resource_id   = aws_api_gateway_resource.proxy.id
   http_method   = "ANY"
-  authorization = "NONE" # No authorization for now as per requirement
+  authorization = "NONE"
   
-  # Define the request parameters that need to be passed
   request_parameters = {
     "method.request.path.proxy" = true
   }
 }
 
-# Integration with Load Balancer - completely revised for proper proxy path handling
+# Integration with Load Balancer
 resource "aws_api_gateway_integration" "lb_integration" {
-  rest_api_id             = local.rest_api_id
+  rest_api_id             = aws_api_gateway_rest_api.api.id
   resource_id             = aws_api_gateway_resource.proxy.id
   http_method             = aws_api_gateway_method.proxy_method.http_method
   
-  # HTTP_PROXY maintains original HTTP method
   type                    = "HTTP_PROXY"
   integration_http_method = "ANY"
-  
-  # Path parameter must match exactly what's in the request_parameters mapping
   uri                     = "http://${var.load_balancer_dns}/{proxy}"
   connection_type         = "VPC_LINK"
   connection_id           = aws_api_gateway_vpc_link.link.id
   
-  # Pass all request parameters to the backend
-  passthrough_behavior    = "WHEN_NO_MATCH"
-  
-  # Cache configuration to improve performance
-  cache_key_parameters    = ["method.request.path.proxy"]
-  
-  # Map the request path parameter to the integration URI path parameter
   request_parameters = {
     "integration.request.path.proxy" = "method.request.path.proxy"
   }
@@ -120,15 +79,15 @@ resource "aws_api_gateway_integration" "lb_integration" {
 
 # Root path method and integration
 resource "aws_api_gateway_method" "root_method" {
-  rest_api_id   = local.rest_api_id
-  resource_id   = local.root_resource_id
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_rest_api.api.root_resource_id
   http_method   = "ANY"
   authorization = "NONE"
 }
 
 resource "aws_api_gateway_integration" "root_integration" {
-  rest_api_id = local.rest_api_id
-  resource_id = local.root_resource_id
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_rest_api.api.root_resource_id
   http_method = aws_api_gateway_method.root_method.http_method
   
   type                    = "HTTP_PROXY"
@@ -136,21 +95,18 @@ resource "aws_api_gateway_integration" "root_integration" {
   uri                     = "http://${var.load_balancer_dns}/"
   connection_type         = "VPC_LINK"
   connection_id           = aws_api_gateway_vpc_link.link.id
-  
-  # Ensure cache configuration is consistent
-  cache_key_parameters = []
 }
 
-# Enable CORS for the proxy resource
+# CORS Configuration
 resource "aws_api_gateway_method" "proxy_options" {
-  rest_api_id   = local.rest_api_id
+  rest_api_id   = aws_api_gateway_rest_api.api.id
   resource_id   = aws_api_gateway_resource.proxy.id
   http_method   = "OPTIONS"
   authorization = "NONE"
 }
 
 resource "aws_api_gateway_method_response" "proxy_options_response" {
-  rest_api_id = local.rest_api_id
+  rest_api_id = aws_api_gateway_rest_api.api.id
   resource_id = aws_api_gateway_resource.proxy.id
   http_method = aws_api_gateway_method.proxy_options.http_method
   status_code = "200"
@@ -163,7 +119,7 @@ resource "aws_api_gateway_method_response" "proxy_options_response" {
 }
 
 resource "aws_api_gateway_integration" "proxy_options_integration" {
-  rest_api_id = local.rest_api_id
+  rest_api_id = aws_api_gateway_rest_api.api.id
   resource_id = aws_api_gateway_resource.proxy.id
   http_method = aws_api_gateway_method.proxy_options.http_method
   type        = "MOCK"
@@ -174,7 +130,7 @@ resource "aws_api_gateway_integration" "proxy_options_integration" {
 }
 
 resource "aws_api_gateway_integration_response" "proxy_options_integration_response" {
-  rest_api_id = local.rest_api_id
+  rest_api_id = aws_api_gateway_rest_api.api.id
   resource_id = aws_api_gateway_resource.proxy.id
   http_method = aws_api_gateway_method.proxy_options.http_method
   status_code = aws_api_gateway_method_response.proxy_options_response.status_code
@@ -186,48 +142,23 @@ resource "aws_api_gateway_integration_response" "proxy_options_integration_respo
   }
 }
 
-# Deployment and Stages
-
-# Deployment configuration with timestamp to force redeploy
+# Deployment
 resource "aws_api_gateway_deployment" "deployment" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  
   depends_on = [
     aws_api_gateway_integration.lb_integration,
     aws_api_gateway_integration.root_integration,
     aws_api_gateway_integration_response.proxy_options_integration_response
   ]
-  
-  rest_api_id = local.rest_api_id
-  
-  # Use a timestamp to force redeployment when needed
-  triggers = {
-    # Add timestamp to ensure deployment happens on every apply
-    redeployment = sha1(jsonencode([
-      aws_api_gateway_resource.proxy.id,
-      aws_api_gateway_method.proxy_method.id,
-      aws_api_gateway_integration.lb_integration.id,
-      aws_api_gateway_method.root_method.id,
-      aws_api_gateway_integration.root_integration.id,
-      timestamp()
-    ]))
-  }
-  
-  lifecycle {
-    create_before_destroy = true
-  }
+
 }
 
-# Create a dynamic stage based on the environment variable
-resource "aws_api_gateway_stage" "environment_stage" {
+# Stage based on workspace
+resource "aws_api_gateway_stage" "env_stage" {
   deployment_id = aws_api_gateway_deployment.deployment.id
-  rest_api_id   = local.rest_api_id
-  stage_name    = var.environment
-  
-  tags = merge(
-    var.tags,
-    {
-      Name = "Rizzlers-ApiGateway-${title(var.environment)}Stage"
-    }
-  )
+  rest_api_id  = aws_api_gateway_rest_api.api.id
+  stage_name   = terraform.workspace
 }
 
 # CloudWatch Log Group for API Gateway
@@ -235,12 +166,7 @@ resource "aws_cloudwatch_log_group" "api_logs" {
   name              = "/aws/apigateway/${var.name_prefix}-api"
   retention_in_days = 30
   
-  tags = merge(
-    var.tags,
-    {
-      Name = "Rizzlers-ApiGateway-Logs"
-    }
-  )
+  tags = var.tags
 }
 
 # Note: Usage plans are not supported for HTTP APIs
