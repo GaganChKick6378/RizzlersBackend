@@ -61,7 +61,7 @@ jobs:
           # Container configuration
           container_port     = 8080
           health_check_path  = "/api/health"
-          allowed_origins    = "http://localhost:3000,https://d327h6huibdsc6.cloudfront.net/,chrome-extension://gmehhhfompinmcoabokhckceachkjmha"
+          allowed_origins    = "http://localhost:3000,https://d1yi08pshszdit.cloudfront.net/,chrome-extension://gmehhhfompinmcoabokhckceachkjmha"
           ENV                = "qa"
 
           # Database configuration
