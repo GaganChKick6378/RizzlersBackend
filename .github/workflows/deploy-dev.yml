@@ -87,7 +87,7 @@ jobs:
     name: "Build and Deploy Backend"
     needs: terraform
     runs-on: ubuntu-latest
-     defaults:
+    defaults:
       run:
         working-directory: ./backend
     
