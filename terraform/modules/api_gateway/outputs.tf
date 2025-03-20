@@ -8,7 +8,7 @@ output "rest_api_id" {
   value       = data.aws_api_gateway_rest_api.existing_api.id
 }
 
-output "qa_stage_name" {
-  description = "Name of the qa stage"
-  value       = aws_api_gateway_stage.qa.stage_name
+output "stage_name" {
+  description = "Name of the environment stage"
+  value       = aws_api_gateway_stage.environment_stage.stage_name
 } 
