@@ -1,40 +1,85 @@
 -- Delete existing data to avoid duplicate keys during re-initialization
-DELETE FROM students;
+DELETE FROM tenant_configuration;
+DELETE FROM tenant_property_assignment;
+DELETE FROM property_promotion_schedule;
+DELETE FROM room_type_images;
+DELETE FROM guest_type_definition;
 
--- Reset the sequence to ensure IDs start from 1
-ALTER SEQUENCE students_id_seq RESTART WITH 1;
+-- Reset sequences
+ALTER SEQUENCE tenant_configuration_id_seq RESTART WITH 1;
+ALTER SEQUENCE tenant_property_assignment_id_seq RESTART WITH 1;
+ALTER SEQUENCE property_promotion_schedule_id_seq RESTART WITH 1;
+ALTER SEQUENCE room_type_images_id_seq RESTART WITH 1;
+ALTER SEQUENCE guest_type_definition_id_seq RESTART WITH 1;
 
--- Sample student data for Computer Science department
-INSERT INTO students (first_name, last_name, email, enrollment_number, year_of_study, cgpa, department, date_of_birth, mobile_number, address, created_at, updated_at, is_active)
-VALUES 
-    ('John', 'Smith', 'john.smith@example.com', 'CS20210001', 3, 8.75, 'Computer Science', '2000-05-15', '9876543210', '123 College St, Apt 45, New York, NY 10001', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, TRUE),
-    ('Emily', 'Johnson', 'emily.johnson@example.com', 'CS20210002', 3, 9.20, 'Computer Science', '2001-07-22', '9876543211', '456 University Ave, Boston, MA 02215', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, TRUE),
-    ('Michael', 'Williams', 'michael.williams@example.com', 'CS20210003', 3, 7.90, 'Computer Science', '2000-11-30', '9876543212', '789 Campus Rd, Chicago, IL 60637', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, TRUE),
-    ('Sarah', 'Brown', 'sarah.brown@example.com', 'CS20220001', 2, 8.50, 'Computer Science', '2002-03-17', '9876543213', '321 Dorm St, San Francisco, CA 94107', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, TRUE),
-    ('David', 'Jones', 'david.jones@example.com', 'CS20220002', 2, 7.75, 'Computer Science', '2001-09-05', '9876543214', '654 Student Housing, Seattle, WA 98105', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, TRUE);
+-- Sample tenant configuration data
+INSERT INTO tenant_configuration (tenant_id, page, field, value, is_active)
+VALUES
+    -- Landing page configurations for tenant 1
+    (1, 'landing', 'header_logo', '{"url": "https://example.com/logos/tenant1-logo.png", "alt": "Resort Logo"}', TRUE),
+    (1, 'landing', 'page_title', '{"text": "Book Your Dream Vacation"}', TRUE),
+    (1, 'landing', 'banner_image', '{"url": "https://example.com/banners/beach-resort.jpg", "alt": "Beach Resort"}', TRUE),
+    (1, 'landing', 'length_of_stay', '{"min": 1, "max": 30, "default": 3}', TRUE),
+    (1, 'landing', 'guest_options', '{"show": true, "use_guest_type_definitions": true}', TRUE),
+    (1, 'landing', 'room_options', '{"show": true, "max_rooms": 3}', TRUE),
+    (1, 'landing', 'accessibility_options', '{"show": true, "options": ["wheelchair", "hearing", "visual"]}', TRUE),
+    (1, 'landing', 'number_of_rooms', '{"value": 3, "min": 1, "max": 5}', TRUE),
+    
+    -- Results page configurations for tenant 1
+    (1, 'results', 'filters', '{"show": true, "position": "left"}', TRUE),
+    (1, 'results', 'filter_options', '{"price": true, "amenities": true, "room_type": true, "accessibility": true}', TRUE),
+    (1, 'results', 'sort_options', '{"price_low_high": true, "price_high_low": true, "rating": true}', TRUE),
+    
+    -- Room details configurations for tenant 1
+    (1, 'details', 'show_images', '{"show": true, "max_images": 10}', TRUE),
+    (1, 'details', 'show_description', '{"show": true}', TRUE),
+    (1, 'details', 'show_amenities', '{"show": true}', TRUE),
+    
+    -- Checkout page configurations for tenant 1
+    (1, 'checkout', 'traveler_info', '{"fields": ["name", "email", "phone", "address"]}', TRUE),
+    (1, 'checkout', 'billing_info', '{"fields": ["card_number", "expiry", "cvv", "billing_address"]}', TRUE),
+    (1, 'checkout', 'taxes_surcharges', '{"show": true, "tax_rate": 0.12, "resort_fee": 25}', TRUE),
+    (1, 'checkout', 'due_at_resort', '{"percentage": 20}', TRUE),
+    
+    -- Landing page configurations for tenant 2
+    (2, 'landing', 'header_logo', '{"url": "https://example.com/logos/tenant2-logo.png", "alt": "Hotel Logo"}', TRUE),
+    (2, 'landing', 'page_title', '{"text": "Find Your Perfect Stay"}', TRUE),
+    (2, 'landing', 'banner_image', '{"url": "https://example.com/banners/luxury-hotel.jpg", "alt": "Luxury Hotel"}', TRUE);
 
--- Sample student data for Electrical Engineering department
-INSERT INTO students (first_name, last_name, email, enrollment_number, year_of_study, cgpa, department, date_of_birth, mobile_number, address, created_at, updated_at, is_active)
-VALUES 
-    ('Jessica', 'Miller', 'jessica.miller@example.com', 'EE20210001', 3, 8.30, 'Electrical Engineering', '2000-04-12', '9876543215', '987 Engineering Blvd, Austin, TX 78712', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, TRUE),
-    ('James', 'Davis', 'james.davis@example.com', 'EE20210002', 3, 9.10, 'Electrical Engineering', '2000-08-29', '9876543216', '654 Tech Lane, San Jose, CA 95110', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, TRUE),
-    ('Jennifer', 'Wilson', 'jennifer.wilson@example.com', 'EE20220001', 2, 8.85, 'Electrical Engineering', '2001-12-03', '9876543217', '321 Circuit St, Philadelphia, PA 19104', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, TRUE);
+-- Sample property assignment data
+INSERT INTO tenant_property_assignment (tenant_id, property_id, is_assigned)
+VALUES
+    (1, 1, TRUE),
+    (1, 2, TRUE),
+    (1, 3, FALSE),
+    (1, 4, FALSE),
+    (2, 5, TRUE),
+    (2, 6, TRUE),
+    (2, 7, FALSE);
 
--- Sample student data for Mechanical Engineering department
-INSERT INTO students (first_name, last_name, email, enrollment_number, year_of_study, cgpa, department, date_of_birth, mobile_number, address, created_at, updated_at, is_active)
-VALUES 
-    ('Robert', 'Taylor', 'robert.taylor@example.com', 'ME20210001', 3, 7.95, 'Mechanical Engineering', '2000-02-18', '9876543218', '456 Mechanics Dr, Detroit, MI 48201', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, TRUE),
-    ('Emma', 'Anderson', 'emma.anderson@example.com', 'ME20220001', 2, 8.40, 'Mechanical Engineering', '2002-01-25', '9876543219', '789 Design Ave, Pittsburgh, PA 15213', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, TRUE);
+-- Sample promotion schedule data
+INSERT INTO property_promotion_schedule (property_id, promotion_id, start_date, end_date)
+VALUES
+    (1, 1, '2023-12-01', '2023-12-31'),
+    (1, 2, '2024-01-01', '2024-01-31'),
+    (2, 3, '2023-12-15', '2024-01-15'),
+    (5, 4, '2023-12-01', '2024-02-29'),
+    (6, 5, '2024-01-01', '2024-03-31');
 
--- Sample student data for Business Administration department
-INSERT INTO students (first_name, last_name, email, enrollment_number, year_of_study, cgpa, department, date_of_birth, mobile_number, address, created_at, updated_at, is_active)
-VALUES 
-    ('Daniel', 'Thomas', 'daniel.thomas@example.com', 'BA20210001', 3, 8.20, 'Business Administration', '2000-06-10', '9876543220', '123 Commerce St, Atlanta, GA 30303', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, TRUE),
-    ('Olivia', 'Martin', 'olivia.martin@example.com', 'BA20210002', 3, 9.30, 'Business Administration', '2000-10-07', '9876543221', '456 Finance Rd, Charlotte, NC 28202', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, TRUE);
+-- Sample room type images data
+INSERT INTO room_type_images (tenant_id, room_type_id, property_id, image_urls, display_order)
+VALUES
+    (1, 1, 1, ARRAY['https://example.com/images/room1-1.jpg', 'https://example.com/images/room1-2.jpg', 'https://example.com/images/room1-3.jpg'], 1),
+    (1, 2, 1, ARRAY['https://example.com/images/room2-1.jpg', 'https://example.com/images/room2-2.jpg'], 1),
+    (1, 3, 2, ARRAY['https://example.com/images/room3-1.jpg', 'https://example.com/images/room3-2.jpg', 'https://example.com/images/room3-3.jpg'], 1),
+    (2, 4, 5, ARRAY['https://example.com/images/room4-1.jpg', 'https://example.com/images/room4-2.jpg'], 1),
+    (2, 5, 6, ARRAY['https://example.com/images/room5-1.jpg', 'https://example.com/images/room5-2.jpg', 'https://example.com/images/room5-3.jpg'], 1);
 
--- Sample freshman students (1st year)
-INSERT INTO students (first_name, last_name, email, enrollment_number, year_of_study, cgpa, department, date_of_birth, mobile_number, address, created_at, updated_at, is_active)
-VALUES 
-    ('Noah', 'Jackson', 'noah.jackson@example.com', 'CS20230001', 1, 8.90, 'Computer Science', '2003-04-20', '9876543222', '789 Freshman Dorm, Berkeley, CA 94720', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, TRUE),
-    ('Sophia', 'White', 'sophia.white@example.com', 'EE20230001', 1, 9.15, 'Electrical Engineering', '2003-08-11', '9876543223', '321 New Student Blvd, Cambridge, MA 02139', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, TRUE),
-    ('Ethan', 'Harris', 'ethan.harris@example.com', 'ME20230001', 1, 8.25, 'Mechanical Engineering', '2003-11-29', '9876543224', '654 First Year Lane, Ithaca, NY 14850', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, TRUE); 
+-- Sample guest type definitions
+INSERT INTO guest_type_definition (tenant_id, guest_type, min_age, max_age, description, is_active, max_count)
+VALUES
+    (1, 'adult', 18, 999, 'Adults (18+)', TRUE, 4),
+    (1, 'teen', 13, 17, 'Teens (13-17)', TRUE, 3),
+    (1, 'kid', 0, 12, 'Kids (0-12)', TRUE, 2),
+    (2, 'adult', 18, 999, 'Adults (18+)', TRUE, 4),
+    (2, 'child', 0, 17, 'Children (0-17)', TRUE, 2); 
