@@ -1,12 +1,17 @@
 -- Drop existing tables if they exist
+DROP TABLE IF EXISTS guest_type_definition;
+DROP TABLE IF EXISTS room_type_images;
+DROP TABLE IF EXISTS property_promotion_schedule;
+DROP TABLE IF EXISTS tenant_property_assignment;
+DROP TABLE IF EXISTS tenant_configuration;
 DROP TABLE IF EXISTS students;
 
 -- Tenant-specific configuration table
 CREATE TABLE IF NOT EXISTS tenant_configuration (
-    id SERIAL PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     tenant_id INTEGER NOT NULL,
-    page VARCHAR(50) NOT NULL, -- 'landing', 'results', 'details', 'checkout'
-    field VARCHAR(100) NOT NULL, -- 'header_logo', 'page_title', etc.
+    page VARCHAR(255) NOT NULL, -- 'landing', 'results', 'details', 'checkout'
+    field VARCHAR(255) NOT NULL, -- 'header_logo', 'page_title', etc.
     value JSONB NOT NULL, -- Flexible JSON structure to store configuration values
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -15,10 +20,11 @@ CREATE TABLE IF NOT EXISTS tenant_configuration (
 
 -- Property assignment table
 CREATE TABLE IF NOT EXISTS tenant_property_assignment (
-    id SERIAL PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     tenant_id INTEGER NOT NULL,
     property_id INTEGER NOT NULL,
     is_assigned BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (tenant_id, property_id)
@@ -26,23 +32,25 @@ CREATE TABLE IF NOT EXISTS tenant_property_assignment (
 
 -- Promotion schedule table
 CREATE TABLE IF NOT EXISTS property_promotion_schedule (
-    id SERIAL PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     property_id INTEGER NOT NULL,
     promotion_id INTEGER NOT NULL,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Room images table
 CREATE TABLE IF NOT EXISTS room_type_images (
-    id SERIAL PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     tenant_id INTEGER NOT NULL,
     room_type_id INTEGER NOT NULL,
     property_id INTEGER NOT NULL,
     image_urls VARCHAR(512)[] NOT NULL,  -- Array of image URLs
     display_order INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     -- Composite unique constraint to ensure no duplicates
@@ -51,9 +59,9 @@ CREATE TABLE IF NOT EXISTS room_type_images (
 
 -- Guest type definitions for dropdown
 CREATE TABLE IF NOT EXISTS guest_type_definition (
-    id SERIAL PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     tenant_id INTEGER NOT NULL,
-    guest_type VARCHAR(50) NOT NULL, -- 'adult', 'teen', 'kid'
+    guest_type VARCHAR(255) NOT NULL, -- 'adult', 'teen', 'kid'
     min_age INTEGER NOT NULL,
     max_age INTEGER NOT NULL,
     description VARCHAR(255),

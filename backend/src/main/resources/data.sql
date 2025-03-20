@@ -47,33 +47,33 @@ VALUES
     (2, 'landing', 'banner_image', '{"url": "https://example.com/banners/luxury-hotel.jpg", "alt": "Luxury Hotel"}', TRUE);
 
 -- Sample property assignment data
-INSERT INTO tenant_property_assignment (tenant_id, property_id, is_assigned)
+INSERT INTO tenant_property_assignment (tenant_id, property_id, is_assigned, is_active)
 VALUES
-    (1, 1, TRUE),
-    (1, 2, TRUE),
-    (1, 3, FALSE),
-    (1, 4, FALSE),
-    (2, 5, TRUE),
-    (2, 6, TRUE),
-    (2, 7, FALSE);
+    (1, 1, TRUE, TRUE),
+    (1, 2, TRUE, TRUE),
+    (1, 3, FALSE, TRUE),
+    (1, 4, FALSE, TRUE),
+    (2, 5, TRUE, TRUE),
+    (2, 6, TRUE, TRUE),
+    (2, 7, FALSE, TRUE);
 
 -- Sample promotion schedule data
-INSERT INTO property_promotion_schedule (property_id, promotion_id, start_date, end_date)
+INSERT INTO property_promotion_schedule (property_id, promotion_id, start_date, end_date, is_active)
 VALUES
-    (1, 1, '2023-12-01', '2023-12-31'),
-    (1, 2, '2024-01-01', '2024-01-31'),
-    (2, 3, '2023-12-15', '2024-01-15'),
-    (5, 4, '2023-12-01', '2024-02-29'),
-    (6, 5, '2024-01-01', '2024-03-31');
+    (1, 1, '2023-12-01', '2023-12-31', TRUE),
+    (1, 2, '2024-01-01', '2024-01-31', TRUE),
+    (2, 3, '2023-12-15', '2024-01-15', TRUE),
+    (5, 4, '2023-12-01', '2024-02-29', TRUE),
+    (6, 5, '2024-01-01', '2024-03-31', TRUE);
 
 -- Sample room type images data
-INSERT INTO room_type_images (tenant_id, room_type_id, property_id, image_urls, display_order)
+INSERT INTO room_type_images (tenant_id, room_type_id, property_id, image_urls, display_order, is_active)
 VALUES
-    (1, 1, 1, ARRAY['https://example.com/images/room1-1.jpg', 'https://example.com/images/room1-2.jpg', 'https://example.com/images/room1-3.jpg'], 1),
-    (1, 2, 1, ARRAY['https://example.com/images/room2-1.jpg', 'https://example.com/images/room2-2.jpg'], 1),
-    (1, 3, 2, ARRAY['https://example.com/images/room3-1.jpg', 'https://example.com/images/room3-2.jpg', 'https://example.com/images/room3-3.jpg'], 1),
-    (2, 4, 5, ARRAY['https://example.com/images/room4-1.jpg', 'https://example.com/images/room4-2.jpg'], 1),
-    (2, 5, 6, ARRAY['https://example.com/images/room5-1.jpg', 'https://example.com/images/room5-2.jpg', 'https://example.com/images/room5-3.jpg'], 1);
+    (1, 1, 1, ARRAY['https://example.com/images/room1-1.jpg', 'https://example.com/images/room1-2.jpg', 'https://example.com/images/room1-3.jpg'], 1, TRUE),
+    (1, 2, 1, ARRAY['https://example.com/images/room2-1.jpg', 'https://example.com/images/room2-2.jpg'], 1, TRUE),
+    (1, 3, 2, ARRAY['https://example.com/images/room3-1.jpg', 'https://example.com/images/room3-2.jpg', 'https://example.com/images/room3-3.jpg'], 1, TRUE),
+    (2, 4, 5, ARRAY['https://example.com/images/room4-1.jpg', 'https://example.com/images/room4-2.jpg'], 1, TRUE),
+    (2, 5, 6, ARRAY['https://example.com/images/room5-1.jpg', 'https://example.com/images/room5-2.jpg', 'https://example.com/images/room5-3.jpg'], 1, TRUE);
 
 -- Sample guest type definitions
 INSERT INTO guest_type_definition (tenant_id, guest_type, min_age, max_age, description, is_active, max_count)
