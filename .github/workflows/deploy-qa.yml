@@ -490,6 +490,7 @@ jobs:
                     {"name": "SPRING_DATASOURCE_URL_QA", "value": "${{ env.TF_VAR_qa_database_url }}"},
                     {"name": "SPRING_DATASOURCE_USERNAME", "value": "${{ env.TF_VAR_database_username }}"},
                     {"name": "SPRING_DATASOURCE_PASSWORD", "value": "${{ env.TF_VAR_database_password }}"},
+                    {"name": "SPRING_DATASOURCE_DRIVER_CLASS_NAME", "value": "org.postgresql.Driver"},
                     {"name": "GRAPHQL_ENDPOINT", "value": "${{ env.GRAPHQL_ENDPOINT }}"},
                     {"name": "GRAPHQL_API_KEY", "value": "${{ env.GRAPHQL_API_KEY }}"}
                   ]

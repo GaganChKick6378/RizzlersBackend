@@ -22,10 +22,21 @@ public class DatabaseConfig {
     @Bean
     public DataSource dataSource() {
         DriverManagerDataSource dataSource = new DriverManagerDataSource();
-        dataSource.setDriverClassName(env.getRequiredProperty("spring.datasource.driver-class-name"));
         
-        // Get active profile
-        String activeProfile = env.getProperty("spring.profiles.active", "");
+        // Get driver class name from environment or use default for PostgreSQL
+        String driverClassName = System.getenv("SPRING_DATASOURCE_DRIVER_CLASS_NAME");
+        if (driverClassName == null || driverClassName.isEmpty()) {
+            driverClassName = env.getProperty("spring.datasource.driver-class-name", "org.postgresql.Driver");
+        }
+        dataSource.setDriverClassName(driverClassName);
+        
+        // Get active profile - first check environment variable, then property
+        String activeProfile = System.getenv("SPRING_PROFILES_ACTIVE");
+        if (activeProfile == null || activeProfile.isEmpty()) {
+            activeProfile = env.getProperty("spring.profiles.active", "");
+        }
+        
+        System.out.println("Active profile: " + activeProfile);
         
         // Choose the right database URL based on profile
         if ("qa".equals(activeProfile)) {
@@ -36,9 +47,6 @@ public class DatabaseConfig {
             String qaUrl = env.getProperty("spring.datasource.url.qa");
             if (qaUrl == null) {
                 qaUrl = env.getProperty("SPRING_DATASOURCE_URL_QA");
-            }
-            if (qaUrl == null) {
-                qaUrl = env.getRequiredProperty("spring.datasource.url");
             }
             dataSource.setUrl(qaUrl);
             System.out.println("Using QA database URL: " + qaUrl);
