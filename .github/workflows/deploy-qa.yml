@@ -10,8 +10,19 @@ env:
   ECR_REPOSITORY: ibe-rizzlers-qa
 
 jobs:
+  approval:
+    name: "Manual Approval"
+    runs-on: ubuntu-latest
+    environment:
+      name: qa-approval
+      
+    steps:
+      - name: Approval Notification
+        run: echo "Deployment has been approved"
+
   terraform:
     name: "Deploy Infrastructure"
+    needs: approval
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -84,17 +95,6 @@ jobs:
         id: terraform-outputs
         run: |
           echo "ECR_REPOSITORY_URL=$(terraform output -raw ecr_repository_url)" >> $GITHUB_ENV
-
-  approval:
-    name: "Manual Approval"
-    needs: terraform
-    runs-on: ubuntu-latest
-    environment:
-      name: qa-approval
-      
-    steps:
-      - name: Approval Notification
-        run: echo "Deployment has been approved"
 
   build-and-deploy:
     name: "Build and Deploy Backend"
