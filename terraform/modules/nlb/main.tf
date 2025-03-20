@@ -1,5 +1,5 @@
 resource "aws_lb" "nlb" {
-  name               = "${var.name_prefix}-nlb-v2"
+  name               = "${var.name_prefix}-nlb"
   internal           = false
   load_balancer_type = "network"
   subnets            = var.subnets
@@ -16,7 +16,7 @@ resource "aws_lb" "nlb" {
 
 # Target group for ALB
 resource "aws_lb_target_group" "alb_target_group" {
-  name        = "${var.name_prefix}-alb-tg-v2"
+  name        = "${var.name_prefix}-alb-tg"
   port        = var.target_port
   protocol    = "TCP"
   vpc_id      = var.vpc_id
@@ -34,10 +34,13 @@ resource "aws_lb_target_group" "alb_target_group" {
     matcher             = "200-399"
   }
 
+  # Add dependency on ALB listener
+  depends_on = [var.alb_listener_arn]
+
   tags = merge(
     var.tags,
     {
-      Name = "Rizzlers-NLB-TG-${var.environment}"
+      Name = "${var.name_prefix}-nlb-tg"
     }
   )
 }
@@ -47,6 +50,9 @@ resource "aws_lb_target_group_attachment" "alb_attachment" {
   target_group_arn = aws_lb_target_group.alb_target_group.arn
   target_id        = var.alb_arn
   port             = var.target_port
+
+  # Add dependency on ALB listener
+  depends_on = [var.alb_listener_arn]
 }
 
 # Listener for the NLB

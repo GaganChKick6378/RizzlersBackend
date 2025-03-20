@@ -4,281 +4,109 @@ on:
   push:
     branches:
       - QA
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches:
-      - QA
-
+  
 env:
   AWS_REGION: ap-south-1
-  TERRAFORM_DIR: terraform
-  TF_VAR_environment: qa
-  TF_VAR_vpc_name: KDU-25-VPC
-  TF_VAR_availability_zones: '["ap-south-1a", "ap-south-1b", "ap-south-1c"]'
-  TF_VAR_use_existing_resources: "true"
-  TF_VAR_resource_name_prefix: "rizzlers-tf-qa"
-  # Subnet IDs from KDU-25-VPC in ap-south-1
-  TF_VAR_public_subnet_ids: ${{ secrets.TF_VAR_PUBLIC_SUBNET_IDS }}
-  TF_VAR_private_subnet_ids: ${{ secrets.TF_VAR_PRIVATE_SUBNET_IDS }}
-  # Hardcoded ECS resource names based on resource_name_prefix pattern
-  ECS_CLUSTER: "rizzlers-cluster"
-  ECS_SERVICE: "rizzlers-tf-qa-service"
-  ECS_TASK_DEFINITION: "rizzlers-tf-qa-task"
-  # ECR repository name based on environment
-  ECR_REPOSITORY_NAME: "rizzlers-tf-qa"
-  # QA specific database configuration
-  TF_VAR_database_url: ${{ secrets.DB_URL_DEV }}
-  TF_VAR_qa_database_url: ${{ secrets.QA_DATABASE_URL }}
-  TF_VAR_database_username: ${{ secrets.DB_USERNAME }}
-  TF_VAR_database_password: ${{ secrets.DB_PASSWORD }}
-  # GraphQL Configuration
-  GRAPHQL_ENDPOINT: ${{ secrets.GRAPHQL_ENDPOINT }}
-  GRAPHQL_API_KEY: ${{ secrets.GRAPHQL_API_KEY }}
-
-# Note: To enable manual approval, create a GitHub environment in your repository settings:
-# 1. 'qa-environment' - For approving the entire QA deployment process
-#
-# Add required reviewers who will need to approve the deployment.
-# This ensures a controlled deployment process for the QA environment.
+  ECR_REPOSITORY: ibe-rizzlers-qa
 
 jobs:
-  check_pr:
-    name: Check Pull Request
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      # Ensure we use a QA-specific state file to prevent destroying dev resources
-      - name: Update Terraform Backend for QA
-        working-directory: ${{ env.TERRAFORM_DIR }}
-        run: |
-          # Update the backend.tf file to use a QA-specific state file
-          sed -i 's/env\/dev\/backend\/terraform.tfstate/env\/qa\/backend\/terraform.tfstate/g' backend.tf
-          cat backend.tf
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.5.0
-
-      - name: Terraform Init
-        working-directory: ${{ env.TERRAFORM_DIR }}
-        run: |
-          # Explicitly initialize with a QA-specific backend state file
-          terraform init -reconfigure
-
-      - name: Terraform Format
-        working-directory: ${{ env.TERRAFORM_DIR }}
-        run: terraform fmt
-
-      - name: Terraform Validate
-        working-directory: ${{ env.TERRAFORM_DIR }}
-        run: terraform validate
-
-      - name: Terraform Plan
-        working-directory: ${{ env.TERRAFORM_DIR }}
-        run: terraform plan -var="environment=qa"
-
   terraform:
-    name: Apply Terraform Infrastructure
+    name: "Deploy Infrastructure"
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    # Use environment for manual approval
-    environment: qa-environment
+    defaults:
+      run:
+        working-directory: ./terraform
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v3
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # Ensure we use a QA-specific state file to prevent destroying dev resources
-      - name: Update Terraform Backend for QA
-        working-directory: ${{ env.TERRAFORM_DIR }}
-        run: |
-          # Update the backend.tf file to use a QA-specific state file
-          sed -i 's/env\/dev\/backend\/terraform.tfstate/env\/qa\/backend\/terraform.tfstate/g' backend.tf
-          cat backend.tf
-
-      # Terraform Steps
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.5.0
-
       - name: Terraform Init
-        working-directory: ${{ env.TERRAFORM_DIR }}
+        run: terraform init
+
+      - name: Select QA Workspace
+        run: terraform workspace select qa || terraform workspace new qa
+
+      - name: Create qa.tfvars file
         run: |
-          # Explicitly initialize with a QA-specific backend state file
-          terraform init -reconfigure
+          cat > qa.tfvars <<EOF
+          # General configuration
+          aws_region   = "${{ env.AWS_REGION }}"
+          project_name = "IBE"
+          team_name    = "rizzlers"
 
-      - name: Terraform Format
-        working-directory: ${{ env.TERRAFORM_DIR }}
-        run: terraform fmt
+          # Container configuration
+          container_port     = 8080
+          health_check_path  = "/api/health"
+          allowed_origins    = "http://localhost:3000,https://d327h6huibdsc6.cloudfront.net/,chrome-extension://gmehhhfompinmcoabokhckceachkjmha"
+          ENV                = "qa"
 
-      - name: Terraform Validate
-        working-directory: ${{ env.TERRAFORM_DIR }}
-        run: terraform validate
+          # Database configuration
+          database_url       = "${{ secrets.QA_DATABASE_URL }}"
+          database_username  = "${{ secrets.DB_USERNAME }}"
+          database_password  = "${{ secrets.DB_PASSWORD }}"
 
-      # Add an import step to handle existing resources
-      - name: Manage Terraform State
-        working-directory: ${{ env.TERRAFORM_DIR }}
-        run: |
-          # Directly handle state management without import script
-          # Check for the existing resources in state
-          echo "Checking state for existing resources..."
-          
-          # Function to safely remove resources from state to prevent destruction
-          function safe_state_rm() {
-            local resource=$1
-            if terraform state list | grep -q "$resource"; then
-              echo "Removing $resource from state to prevent destruction"
-              terraform state rm "$resource" || true
-            fi
+          # VPC and networking
+          vpc_name          = "KDU-25-VPC"
+          public_subnet_ids  = ${{ secrets.TF_VAR_PUBLIC_SUBNET_IDS }}
+          private_subnet_ids = ${{ secrets.TF_VAR_PRIVATE_SUBNET_IDS }}
+
+          # Tags
+          tags = {
+            Name    = "Rizzlers-Backend"
+            Creator = "RizzlersTeam"
+            Purpose = "IBE"
           }
-          
-          # Remove resources from state that should use data source instead
-          safe_state_rm "module.ecs.aws_ecs_cluster.app_cluster"
-          safe_state_rm "module.api_gateway.aws_api_gateway_rest_api.api"
-          
-          # Verify with plan that we're not destroying resources
-          terraform plan -var="environment=qa" -out=tfplan
-          
-          # Check for destroy operations in the plan
-          DESTROY_OPS=$(terraform show -json tfplan | jq -r '.resource_changes[] | select(.change.actions | contains(["delete"]))' | wc -l)
-          if [ "$DESTROY_OPS" -gt "0" ]; then
-            echo "WARNING: Plan contains resource destructions! Review before proceeding."
-            terraform show -json tfplan | jq -r '.resource_changes[] | select(.change.actions | contains(["delete"])) | .address'
-            
-            # Remove problematic resources from state
-            terraform show -json tfplan | jq -r '.resource_changes[] | select(.change.actions | contains(["delete"])) | .address' | while read addr; do
-              echo "Removing $addr from state to prevent destruction"
-              terraform state rm "$addr" || true
-            done
-            
-            # Re-plan after state adjustments
-            terraform plan -var="environment=qa" -out=tfplan
-          else
-            echo "Plan looks good - no resource destructions detected."
-          fi
-
-      - name: Import Existing Resources
-        working-directory: ${{ env.TERRAFORM_DIR }}
-        run: |
-          # Function to try importing a resource and ignore errors
-          function try_import() {
-            local resource_address=$1
-            local resource_id=$2
-            echo "Attempting to import $resource_address with ID $resource_id"
-            terraform import -var="environment=qa" $resource_address $resource_id || echo "Import failed, resource may not exist yet"
-          }
-          
-          # Try to import core resources that need to be existing
-          try_import "module.ecs.data.aws_ecs_cluster.existing_cluster" "rizzlers-cluster" || true
-          try_import "module.api_gateway.data.aws_api_gateway_rest_api.existing_api" "rizzlers-api" || true
-          
-          # Continue with existing resource imports...
-          # Security Group for API Gateway VPC Link
-          VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=${{ env.TF_VAR_vpc_name }}" --query "Vpcs[0].VpcId" --output text)
-          SG_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=rizzlers-tf-qa-vpce-sg" "Name=vpc-id,Values=$VPC_ID" --query "SecurityGroups[0].GroupId" --output text || echo "")
-          if [ -n "$SG_ID" ]; then
-            try_import "module.api_gateway.aws_security_group.vpce_sg" "$SG_ID"
-          fi
-          
-          # CloudWatch Log Groups
-          try_import "module.api_gateway.aws_cloudwatch_log_group.api_logs" "/aws/apigateway/rizzlers-tf-qa-api"
-          try_import "module.cloudwatch.aws_cloudwatch_log_group.app_logs" "/aws/rizzlers-tf-qa/application"
-          
-          # NLB and Target Group
-          NLB_ARN=$(aws elbv2 describe-load-balancers --name rizzlers-tf-qa-nlb --query "LoadBalancers[0].LoadBalancerArn" --output text || echo "")
-          if [ -n "$NLB_ARN" ]; then
-            try_import "module.nlb.aws_lb.nlb" "$NLB_ARN"
-          fi
-          
-          TG_ARN=$(aws elbv2 describe-target-groups --name rizzlers-tf-qa-nlb-tg --query "TargetGroups[0].TargetGroupArn" --output text || echo "")
-          if [ -n "$TG_ARN" ]; then
-            try_import "module.nlb.aws_lb_target_group.nlb_tg" "$TG_ARN"
-          fi
+          EOF
 
       - name: Terraform Plan
-        working-directory: ${{ env.TERRAFORM_DIR }}
-        run: terraform plan -var="environment=qa" -out=tfplan
+        id: plan
+        run: | 
+          cat qa.tfvars
+          terraform plan -var-file=qa.tfvars -out=tfplan
 
-      - name: Apply Core Infrastructure
-        working-directory: ${{ env.TERRAFORM_DIR }}
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+
+      - name: Save Terraform Outputs
+        id: terraform-outputs
         run: |
-          # Set TF_CLI_ARGS to ignore certain errors during apply
-          export TF_CLI_ARGS_apply="-parallelism=1 -refresh=true"
-          
-          # First apply core infrastructure (excluding ECS service which depends on image)
-          echo "Applying core infrastructure..."
-          terraform apply -auto-approve -var="environment=qa" \
-            -target=module.security_groups \
-            -target=module.alb \
-            -target=module.nlb \
-            -target=module.api_gateway \
-            -target=module.cloudwatch || echo "Ignoring minor errors"
-          
-          # Apply ECS task definition
-          echo "Applying ECS cluster and task definition..."
-          terraform apply -auto-approve -var="environment=qa" \
-            -target=module.ecs.data.aws_ecs_cluster.existing_cluster \
-            -target=module.ecs.aws_ecs_task_definition.app_task || echo "Ignoring errors for core resources"
+          echo "ECR_REPOSITORY_URL=$(terraform output -raw ecr_repository_url)" >> $GITHUB_ENV
 
-      - name: Save ECR Repository URL
-        working-directory: ${{ env.TERRAFORM_DIR }}
-        run: |
-          # Get ECR repository URL from Terraform output
-          # Use terraform show to extract information from the plan
-          REPO_URL=$(terraform output -raw ecr_repository_url 2>/dev/null || echo "")
-          
-          # If Terraform output fails, fall back to constructed URL but don't hardcode
-          if [ -z "$REPO_URL" ]; then
-            echo "Terraform output for ecr_repository_url not found, using fallback method..."
-            # Get repository name from environment variable - not hardcoded
-            ECR_REPO="${{ env.ECR_REPOSITORY_NAME }}"
-            # Get AWS account dynamically
-            AWS_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
-            REPO_URL="${AWS_ACCOUNT}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${ECR_REPO}"
-            echo "Constructed repository URL from environment variables"
-          else
-            echo "Using repository URL from Terraform output"
-          fi
-          
-          # Save the URL to a file
-          mkdir -p /tmp/workflow-artifacts
-          echo "${REPO_URL}" > /tmp/workflow-artifacts/repo_url.txt
-          echo "Repository URL: ${REPO_URL}"
-      
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-outputs
-          path: /tmp/workflow-artifacts/repo_url.txt
-          retention-days: 1
-
-  build:
-    name: Build and Push Docker Image
+  approval:
+    name: "Manual Approval"
     needs: terraform
     runs-on: ubuntu-latest
+    environment:
+      name: qa-approval
+      
+    steps:
+      - name: Approval Notification
+        run: echo "Deployment has been approved"
+
+  build-and-deploy:
+    name: "Build and Deploy Backend"
+    needs: terraform
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -286,311 +114,51 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-      
-      - name: Download Repository URL
-        uses: actions/download-artifact@v4
-        with:
-          name: terraform-outputs
-          path: /tmp/workflow-artifacts
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: "17"
-          distribution: "temurin"
-          cache: maven
-
-      - name: Build with Maven
-        working-directory: backend
-        run: |
-          # Force QA profile
-          export SPRING_PROFILES_ACTIVE=qa
-          
-          # Try to generate Maven wrapper if necessary
-          mvn -N io.takari:maven:wrapper -Dmaven=3.9.5 || true
-
-          # Build the project (create a dummy JAR if it fails)
-          mvn clean package -DskipTests || mkdir -p target && touch target/app.jar
 
       - name: Login to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
+        uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Verify ECR Repository Exists
-        run: |
-          REPO_EXISTS=$(aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY_NAME }} --query 'repositories[0].repositoryName' --output text 2>/dev/null || echo "")
-          if [ -z "$REPO_EXISTS" ]; then
-            echo "Creating ECR repository ${{ env.ECR_REPOSITORY_NAME }}"
-            aws ecr create-repository --repository-name ${{ env.ECR_REPOSITORY_NAME }}
-          else
-            echo "ECR repository ${{ env.ECR_REPOSITORY_NAME }} already exists"
-          fi
-
-      - name: Build and Push Docker Image
-        working-directory: backend
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          # Get repository URL from Terraform output or use fallback
-          # Ensure we properly read the content and remove any trailing newlines
-          REPO_URL=$(cat /tmp/workflow-artifacts/repo_url.txt 2>/dev/null | tr -d '\n' || echo "${ECR_REGISTRY}/${{ env.ECR_REPOSITORY_NAME }}")
-          echo "Using repository URL: ${REPO_URL}"
-          
-          # Add additional validation to ensure REPO_URL doesn't contain unexpected flags
-          if [[ "$REPO_URL" == *"-"* ]]; then
-            echo "WARNING: Repository URL contains dashes which might be interpreted as flags. Using fallback."
-            REPO_URL="${ECR_REGISTRY}/${{ env.ECR_REPOSITORY_NAME }}"
-            echo "Using fallback repository URL: ${REPO_URL}"
-          fi
-          
-          # Build the image with both tags - using quotes to prevent misinterpretation
-          docker build -t "${REPO_URL}:${IMAGE_TAG}" -t "${REPO_URL}:latest" .
+          # Build a docker container and push it to ECR
+          docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG \
+            --build-arg database_url="${{ secrets.QA_DATABASE_URL }}" \
+            --build-arg database_username="${{ secrets.DB_USERNAME }}" \
+            --build-arg database_password="${{ secrets.DB_PASSWORD }}" \
+            --build-arg graphql_endpoint="${{ secrets.GRAPHQL_ENDPOINT }}" \
+            --build-arg graphql_api_key="${{ secrets.GRAPHQL_API_KEY }}" \
+            --build-arg container_port="8080" \
+            --build-arg allowed_origins="http://localhost:3000,https://d327h6huibdsc6.cloudfront.net/,chrome-extension://gmehhhfompinmcoabokhckceachkjmha" \
+            --build-arg ENV="qa" \
+            .
+          docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
+          docker tag $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+          docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+          echo "::set-output name=image::$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG"
 
-          # Push both tags - using quotes to prevent misinterpretation
-          echo "Pushing image with tag: ${IMAGE_TAG}"
-          docker push "${REPO_URL}:${IMAGE_TAG}"
-
-          echo "Pushing image with tag: latest"
-          docker push "${REPO_URL}:latest"
-
-          # Verify image exists in ECR
-          echo "Verifying image in ECR repository..."
-          aws ecr describe-images --repository-name ${{ env.ECR_REPOSITORY_NAME }} --image-ids imageTag=latest
-
-          # Save exact image URI for task definition update
-          FULL_IMAGE_URI="${REPO_URL}:latest"
-          echo "FULL_IMAGE_URI=${FULL_IMAGE_URI}" >> $GITHUB_ENV
-          
-          # Save for deploy job
-          echo "${FULL_IMAGE_URI}" > /tmp/image_uri.txt
-      
-      - name: Upload Image URI
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-outputs
-          path: /tmp/image_uri.txt
-          retention-days: 1
-
-  deploy:
-    name: Deploy to ECS
-    needs: [terraform, build]
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-      
-      - name: Download Build Outputs
-        uses: actions/download-artifact@v4
-        with:
-          name: build-outputs
-          path: /tmp/workflow-artifacts
-
-      - name: Get Image URI
+      - name: Update ECS service
         run: |
-          # Read the image URI from file, strip any newlines
-          FULL_IMAGE_URI=$(cat /tmp/workflow-artifacts/image_uri.txt | tr -d '\n')
+          CLUSTER_NAME="ibe-rizzlers-qa-cluster"
+          SERVICE_NAME="ibe-rizzlers-qa-service"
           
-          # Validate the URI - if empty or contains unexpected flags, use a fallback
-          if [ -z "$FULL_IMAGE_URI" ] || [[ "$FULL_IMAGE_URI" == *"-"* ]]; then
-            # Generate fallback URI
-            AWS_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
-            FULL_IMAGE_URI="${AWS_ACCOUNT}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY_NAME }}:latest"
-            echo "Using fallback image URI due to validation failure"
-          fi
-          
-          echo "FULL_IMAGE_URI=${FULL_IMAGE_URI}" >> $GITHUB_ENV
-          echo "Using image: ${FULL_IMAGE_URI}"
+          # Force new deployment on ECS to pick up the latest image
+          aws ecs update-service --cluster $CLUSTER_NAME --service $SERVICE_NAME --force-new-deployment
 
-      - name: Update ECS Task Definition
+      - name: Wait for ECS Service to Stabilize
         run: |
-          echo "Checking for latest active task definition..."
-          LATEST_TASK_DEF_ARN=$(aws ecs list-task-definitions --family-prefix "${{ env.ECS_TASK_DEFINITION }}" --status ACTIVE --sort DESC --max-items 1 --query 'taskDefinitionArns[0]' --output text)
+          CLUSTER_NAME="ibe-rizzlers-qa-cluster"
+          SERVICE_NAME="ibe-rizzlers-qa-service"
           
-          if [ -z "$LATEST_TASK_DEF_ARN" ] || [ "$LATEST_TASK_DEF_ARN" == "None" ]; then
-            echo "No active task definition found. Will need to create one from scratch."
-            TASK_DEF="{}"
-          else
-            # Clean up any potential junk in the ARN
-            LATEST_TASK_DEF_ARN=$(echo "$LATEST_TASK_DEF_ARN" | tr -d '\n' | sed 's/None//g')
-            
-            echo "Found latest task definition: $LATEST_TASK_DEF_ARN"
-            # Get the current task definition
-            TASK_DEF=$(aws ecs describe-task-definition --task-definition "$LATEST_TASK_DEF_ARN" --query 'taskDefinition' 2>/dev/null || echo '{}')
-          fi
+          # Wait for service to stabilize
+          aws ecs wait services-stable --cluster $CLUSTER_NAME --services $SERVICE_NAME
 
-          if [ "$TASK_DEF" = "{}" ]; then
-            echo "Task definition not found or empty, skipping update"
-          else
-            echo "Checking container image..."
-            
-            # Extract container definition and image
-            CONTAINER_NAME="${{ env.TF_VAR_resource_name_prefix }}-task-container"
-            echo "Container name: $CONTAINER_NAME"
-            
-            CONTAINER_DEF=$(echo "$TASK_DEF" | jq -r --arg name "$CONTAINER_NAME" '.containerDefinitions[] | select(.name==$name)' 2>/dev/null || echo "{}")
-            if [ "$CONTAINER_DEF" = "{}" ]; then
-              echo "Container definition not found with name $CONTAINER_NAME"
-              # Try alternative container name for backward compatibility
-              CONTAINER_NAME="${{ env.ECS_TASK_DEFINITION }}-container"
-              echo "Trying alternative container name: $CONTAINER_NAME"
-              CONTAINER_DEF=$(echo "$TASK_DEF" | jq -r --arg name "$CONTAINER_NAME" '.containerDefinitions[] | select(.name==$name)' 2>/dev/null || echo "{}")
-            fi
-            
-            if [ "$CONTAINER_DEF" = "{}" ]; then
-              echo "Container definition still not found. Using the first container in the task definition."
-              CONTAINER_DEF=$(echo "$TASK_DEF" | jq -r '.containerDefinitions[0]' 2>/dev/null || echo "{}")
-              if [ -n "$CONTAINER_DEF" ] && [ "$CONTAINER_DEF" != "{}" ]; then
-                CONTAINER_NAME=$(echo "$CONTAINER_DEF" | jq -r '.name')
-                echo "Using container name: $CONTAINER_NAME"
-              else
-                echo "No container definitions found in task definition."
-                exit 1
-              fi
-            fi
-            
-            CURRENT_IMAGE=$(echo "$CONTAINER_DEF" | jq -r '.image' 2>/dev/null || echo "")
-            
-            echo "Current container image: $CURRENT_IMAGE"
-            echo "New container image: $FULL_IMAGE_URI"
-            
-            # Always update to make sure we have the latest environment variables and settings
-            echo "Updating task definition with new configuration..."
-            
-            # Update the task definition with improved configuration
-            TASK_DEF_JSON=$(echo "$TASK_DEF" | jq --arg image "$FULL_IMAGE_URI" --arg name "$CONTAINER_NAME" '
-              .containerDefinitions = [.containerDefinitions[] | 
-                if .name == $name then 
-                  .image = $image | 
-                  .logConfiguration = {
-                    "logDriver": "awslogs",
-                    "options": {
-                      "awslogs-group": "/ecs/${{ env.TF_VAR_resource_name_prefix }}",
-                      "awslogs-region": "${{ env.AWS_REGION }}",
-                      "awslogs-stream-prefix": "ecs",
-                      "awslogs-create-group": "true"
-                    }
-                  } |
-                  .healthCheck = {
-                    "command": ["CMD-SHELL", "wget -q --spider http://localhost:8080/ || wget -q --spider http://localhost:8080/api/health || wget -q --spider http://localhost:8080/api/actuator/health || exit 1"],
-                    "interval": 30,
-                    "timeout": 5,
-                    "retries": 3,
-                    "startPeriod": 60
-                  } |
-                  .environment = [
-                    {"name": "SPRING_PROFILES_ACTIVE", "value": "qa"},
-                    {"name": "SERVER_PORT", "value": "8080"},
-                    {"name": "SPRING_DATASOURCE_URL", "value": "${{ env.TF_VAR_database_url }}"},
-                    {"name": "SPRING_DATASOURCE_URL_QA", "value": "${{ env.TF_VAR_qa_database_url }}"},
-                    {"name": "SPRING_DATASOURCE_USERNAME", "value": "${{ env.TF_VAR_database_username }}"},
-                    {"name": "SPRING_DATASOURCE_PASSWORD", "value": "${{ env.TF_VAR_database_password }}"},
-                    {"name": "SPRING_DATASOURCE_DRIVER_CLASS_NAME", "value": "org.postgresql.Driver"},
-                    {"name": "GRAPHQL_ENDPOINT", "value": "${{ env.GRAPHQL_ENDPOINT }}"},
-                    {"name": "GRAPHQL_API_KEY", "value": "${{ env.GRAPHQL_API_KEY }}"}
-                  ]
-                else . end
-              ] | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
-            ')
-            
-            echo "New task definition prepared. Registering new revision..."
-            
-            # Register the new task definition
-            REGISTER_RESULT=$(aws ecs register-task-definition --cli-input-json "$TASK_DEF_JSON")
-            NEW_TASK_DEF_ARN=$(echo "$REGISTER_RESULT" | jq -r '.taskDefinition.taskDefinitionArn')
-            
-            if [ -n "$NEW_TASK_DEF_ARN" ] && [ "$NEW_TASK_DEF_ARN" != "null" ] && [ "$NEW_TASK_DEF_ARN" != "None" ]; then
-              # Clean up any potential junk in the ARN
-              NEW_TASK_DEF_ARN=$(echo "$NEW_TASK_DEF_ARN" | tr -d '\n' | sed 's/None//g')
-              
-              # Validate that the ARN starts with "arn:aws:" and has a valid format
-              if [[ "$NEW_TASK_DEF_ARN" =~ ^arn:aws:ecs:.+:.+:task-definition/.+:[0-9]+$ ]]; then
-                echo "Successfully registered new task definition: $NEW_TASK_DEF_ARN"
-                
-                # Save the new task definition ARN to use later
-                echo "NEW_TASK_DEF_ARN=$NEW_TASK_DEF_ARN" >> $GITHUB_ENV
-              else
-                echo "WARNING: New task definition ARN has invalid format: $NEW_TASK_DEF_ARN"
-                echo "Will proceed with force-new-deployment only"
-              fi
-            else
-              echo "Failed to register new task definition or received invalid ARN"
-              echo "Registration result: $REGISTER_RESULT"
-            fi
-          fi
-
-      - name: Update ECS Service
+      - name: Deployment Summary
         run: |
-          echo "Updating ECS service..."
-          
-          if [ -n "${{ env.NEW_TASK_DEF_ARN }}" ] && [ "${{ env.NEW_TASK_DEF_ARN }}" != "None" ]; then
-            # Additional validation for ARN format
-            if [[ "${{ env.NEW_TASK_DEF_ARN }}" =~ ^arn:aws:ecs:.+:.+:task-definition/.+:[0-9]+$ ]]; then
-              echo "Updating service with valid task definition: ${{ env.NEW_TASK_DEF_ARN }}"
-              aws ecs update-service --cluster "${{ env.ECS_CLUSTER }}" --service "${{ env.ECS_SERVICE }}" --task-definition "${{ env.NEW_TASK_DEF_ARN }}" --force-new-deployment
-            else
-              echo "WARNING: Task definition ARN format is invalid: ${{ env.NEW_TASK_DEF_ARN }}"
-              echo "Falling back to force-new-deployment only"
-              aws ecs update-service --cluster "${{ env.ECS_CLUSTER }}" --service "${{ env.ECS_SERVICE }}" --force-new-deployment
-            fi
-          else
-            echo "No valid task definition ARN found. Using force-new-deployment only."
-            aws ecs update-service --cluster "${{ env.ECS_CLUSTER }}" --service "${{ env.ECS_SERVICE }}" --force-new-deployment
-          fi
-          
-      - name: Validate Service Update
-        run: |
-          echo "Validating service update..."
-          
-          # Wait a moment for the update to propagate
-          sleep 5
-          
-          # Check service details to confirm update is in progress
-          SERVICE_DETAILS=$(aws ecs describe-services --cluster "${{ env.ECS_CLUSTER }}" --services "${{ env.ECS_SERVICE }}")
-          
-          # Extract current task definition from service
-          CURRENT_TASK_DEF=$(echo "$SERVICE_DETAILS" | jq -r '.services[0].taskDefinition')
-          echo "Current service task definition: $CURRENT_TASK_DEF"
-          
-          # Extract deployment status
-          DEPLOYMENT_STATUS=$(echo "$SERVICE_DETAILS" | jq -r '.services[0].deployments[0].status')
-          echo "Current deployment status: $DEPLOYMENT_STATUS"
-          
-          if [ -n "${{ env.NEW_TASK_DEF_ARN }}" ] && [ "$CURRENT_TASK_DEF" == "${{ env.NEW_TASK_DEF_ARN }}" ]; then
-            echo "✅ Service updated successfully with new task definition!"
-          elif [ "$DEPLOYMENT_STATUS" == "PRIMARY" ]; then
-            echo "✅ Service update in progress with valid task definition"
-          else
-            echo "⚠️ Service update status cannot be confirmed. Manual verification recommended."
-          fi
-          
-      - name: Wait for Service to Stabilize
-        run: |
-          echo "Waiting for service to stabilize..."
-          aws ecs wait services-stable --cluster "${{ env.ECS_CLUSTER }}" --service "${{ env.ECS_SERVICE }}" || true
-
-      - name: Verify API Gateway QA Stage
-        run: |
-          echo "Verifying the API Gateway QA stage..."
-          # Attempt to find API Gateway REST API with tag Name=Rizzlers-ApiGateway-QaStage or similar
-          API_ID=$(aws apigateway get-rest-apis --query "items[?contains(name, 'rizzlers')].id" --output text)
-          
-          if [ -n "$API_ID" ]; then
-            echo "Found API Gateway with ID: $API_ID"
-            
-            # Check if QA stage exists
-            QA_STAGE=$(aws apigateway get-stages --rest-api-id "$API_ID" --query "item[?stageName=='qa'].stageName" --output text)
-            
-            if [ -n "$QA_STAGE" ]; then
-              echo "QA stage exists. API Gateway QA endpoint: https://$API_ID.execute-api.${{ env.AWS_REGION }}.amazonaws.com/qa/"
-            else
-              echo "QA stage doesn't exist. This should be created by Terraform."
-            fi
-          else
-            echo "API Gateway not found. This should be created by Terraform."
-          fi 
+          echo "✅ Development Deployment completed successfully"
+          echo "Image: ${{ steps.build-image.outputs.image }}"
+          echo "Deployment time: $(date)" 

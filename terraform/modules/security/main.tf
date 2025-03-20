@@ -1,38 +1,27 @@
 resource "aws_security_group" "alb_sg" {
   name        = "${var.name_prefix}-alb-sg"
-  description = "Security group for ALB"
+  description = "Security group for Application Load Balancer"
   vpc_id      = var.vpc_id
+  
+  tags = var.tags
+}
 
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow HTTP traffic from anywhere"
-  }
+resource "aws_security_group_rule" "alb_ingress_http" {
+  security_group_id = aws_security_group.alb_sg.id
+  type              = "ingress"
+  from_port         = 80
+  to_port           = 80
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
 
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow HTTPS traffic from anywhere"
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound traffic"
-  }
-
-  tags = merge(
-    var.tags,
-    {
-      Name = "Rizzlers-ALB-SG-${var.environment}"
-    }
-  )
+resource "aws_security_group_rule" "alb_egress" {
+  security_group_id = aws_security_group.alb_sg.id
+  type              = "egress"
+  from_port         = 0
+  to_port           = 0
+  protocol          = "-1"
+  cidr_blocks       = ["0.0.0.0/0"]
 }
 
 resource "aws_security_group" "ecs_sg" {
@@ -56,10 +45,5 @@ resource "aws_security_group" "ecs_sg" {
     description = "Allow all outbound traffic"
   }
 
-  tags = merge(
-    var.tags,
-    {
-      Name = "Rizzlers-ECS-SG-${var.environment}"
-    }
-  )
+  tags = var.tags
 } 

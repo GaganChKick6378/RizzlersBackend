@@ -16,7 +16,7 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
             .csrf(AbstractHttpConfigurer::disable) // Disable CSRF protection
-            // Use default CORS configuration which will pick up the CorsFilter bean
+            .cors(AbstractHttpConfigurer::disable) // Disable CORS protection
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // Don't create sessions
             .formLogin(AbstractHttpConfigurer::disable) // Disable form login
             .httpBasic(AbstractHttpConfigurer::disable) // Disable HTTP Basic

@@ -6,12 +6,9 @@ resource "aws_ecr_repository" "app_repo" {
     scan_on_push = true
   }
   
-  tags = merge(
-    var.tags,
-    {
-      Name = "Rizzlers-ECR-${var.name}"
-    }
-  )
+  tags = var.tags
+  
+  # Prevent destruction of the ECR repository if it already exists
 }
 
 resource "aws_ecr_lifecycle_policy" "app_repo_policy" {
@@ -33,4 +30,6 @@ resource "aws_ecr_lifecycle_policy" "app_repo_policy" {
       }
     ]
   })
+  
+
 } 
