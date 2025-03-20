@@ -22,10 +22,10 @@ env:
   TF_VAR_private_subnet_ids: ${{ secrets.TF_VAR_PRIVATE_SUBNET_IDS }}
   # Hardcoded ECS resource names based on resource_name_prefix pattern
   ECS_CLUSTER: "rizzlers-cluster"
-  ECS_SERVICE: "rizzlers-tf-${TF_VAR_environment}-service"
-  ECS_TASK_DEFINITION: "rizzlers-tf-${TF_VAR_environment}-task"
+  ECS_SERVICE: "rizzlers-tf-qa-service"
+  ECS_TASK_DEFINITION: "rizzlers-tf-qa-task"
   # ECR repository name based on environment
-  ECR_REPOSITORY_NAME: "rizzlers-tf-${TF_VAR_environment}"
+  ECR_REPOSITORY_NAME: "rizzlers-tf-qa"
   # QA specific database configuration
   TF_VAR_database_url: ${{ secrets.DB_URL_DEV }}
   TF_VAR_qa_database_url: ${{ secrets.QA_DATABASE_URL }}
@@ -410,7 +410,7 @@ jobs:
       - name: Update ECS Task Definition
         run: |
           echo "Checking for latest active task definition..."
-          LATEST_TASK_DEF_ARN=$(aws ecs list-task-definitions --family-prefix ${{ env.ECS_TASK_DEFINITION }} --status ACTIVE --sort DESC --max-items 1 --query 'taskDefinitionArns[0]' --output text)
+          LATEST_TASK_DEF_ARN=$(aws ecs list-task-definitions --family-prefix "${{ env.ECS_TASK_DEFINITION }}" --status ACTIVE --sort DESC --max-items 1 --query 'taskDefinitionArns[0]' --output text)
           
           if [ -z "$LATEST_TASK_DEF_ARN" ] || [ "$LATEST_TASK_DEF_ARN" == "None" ]; then
             echo "No active task definition found. Will need to create one from scratch."
@@ -514,7 +514,7 @@ jobs:
       - name: Apply ECS Service
         run: |
           echo "Checking if cluster exists..."
-          CLUSTER_DETAILS=$(aws ecs describe-clusters --clusters ${{ env.ECS_CLUSTER }} --query 'clusters[0].status')
+          CLUSTER_DETAILS=$(aws ecs describe-clusters --clusters "${{ env.ECS_CLUSTER }}" --query 'clusters[0].status')
           
           if [ -z "$CLUSTER_DETAILS" ] || [ "$CLUSTER_DETAILS" == "null" ]; then
             echo "Error: Cluster ${{ env.ECS_CLUSTER }} not found!"
@@ -522,7 +522,7 @@ jobs:
           fi
           
           echo "Checking if service exists..."
-          SERVICE_DETAILS=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query 'services[0].status' 2>/dev/null || echo "null")
+          SERVICE_DETAILS=$(aws ecs describe-services --cluster "${{ env.ECS_CLUSTER }}" --services "${{ env.ECS_SERVICE }}" --query 'services[0].status' 2>/dev/null || echo "null")
           
           if [ "$SERVICE_DETAILS" == "null" ]; then
             echo "Service doesn't exist. Checkout the code to apply the full terraform configuration"
@@ -545,7 +545,7 @@ jobs:
               TASK_DEF_TO_USE=$NEW_TASK_DEF_ARN
             else
               # Find the latest active task definition revision if we didn't register a new one
-              LATEST_TASK_DEF_ARN=$(aws ecs list-task-definitions --family-prefix ${{ env.ECS_TASK_DEFINITION }} --status ACTIVE --sort DESC --max-items 1 --query 'taskDefinitionArns[0]' --output text)
+              LATEST_TASK_DEF_ARN=$(aws ecs list-task-definitions --family-prefix "${{ env.ECS_TASK_DEFINITION }}" --status ACTIVE --sort DESC --max-items 1 --query 'taskDefinitionArns[0]' --output text)
               
               if [ -n "$LATEST_TASK_DEF_ARN" ] && [ "$LATEST_TASK_DEF_ARN" != "None" ]; then
                 echo "Found latest active task definition: $LATEST_TASK_DEF_ARN"
@@ -560,10 +560,11 @@ jobs:
             # Update the service to use the task definition and force a new deployment
             echo "Updating service with task definition: $TASK_DEF_TO_USE"
             if [ -n "$TASK_DEF_TO_USE" ] && [ "$TASK_DEF_TO_USE" != "None" ]; then
-              aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --task-definition $TASK_DEF_TO_USE --force-new-deployment
+              # Directly using the ARN without variable expansion in the command
+              aws ecs update-service --cluster "${{ env.ECS_CLUSTER }}" --service "${{ env.ECS_SERVICE }}" --task-definition "$TASK_DEF_TO_USE" --force-new-deployment
             else
               echo "No valid task definition ARN found. Using force-new-deployment only."
-              aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --force-new-deployment
+              aws ecs update-service --cluster "${{ env.ECS_CLUSTER }}" --service "${{ env.ECS_SERVICE }}" --force-new-deployment
             fi
             
             echo "Service updated successfully"
@@ -572,7 +573,7 @@ jobs:
       - name: Wait for Service to Stabilize
         run: |
           echo "Waiting for service to stabilize..."
-          aws ecs wait services-stable --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} || true
+          aws ecs wait services-stable --cluster "${{ env.ECS_CLUSTER }}" --service "${{ env.ECS_SERVICE }}" || true
 
       - name: Verify API Gateway QA Stage
         run: |
@@ -584,7 +585,7 @@ jobs:
             echo "Found API Gateway with ID: $API_ID"
             
             # Check if QA stage exists
-            QA_STAGE=$(aws apigateway get-stages --rest-api-id $API_ID --query "item[?stageName=='qa'].stageName" --output text)
+            QA_STAGE=$(aws apigateway get-stages --rest-api-id "$API_ID" --query "item[?stageName=='qa'].stageName" --output text)
             
             if [ -n "$QA_STAGE" ]; then
               echo "QA stage exists. API Gateway QA endpoint: https://$API_ID.execute-api.${{ env.AWS_REGION }}.amazonaws.com/qa/"
