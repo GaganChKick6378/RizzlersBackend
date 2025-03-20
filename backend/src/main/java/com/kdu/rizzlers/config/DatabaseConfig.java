@@ -23,7 +23,30 @@ public class DatabaseConfig {
     public DataSource dataSource() {
         DriverManagerDataSource dataSource = new DriverManagerDataSource();
         dataSource.setDriverClassName(env.getRequiredProperty("spring.datasource.driver-class-name"));
-        dataSource.setUrl(env.getRequiredProperty("spring.datasource.url"));
+        
+        // Get active profile
+        String activeProfile = env.getProperty("spring.profiles.active", "");
+        
+        // Choose the right database URL based on profile
+        if ("qa".equals(activeProfile)) {
+            // For QA profile, try these URLs in order:
+            // 1. spring.datasource.url.qa (standard property name convention)
+            // 2. SPRING_DATASOURCE_URL_QA (environment variable format)
+            // 3. spring.datasource.url (fallback to default)
+            String qaUrl = env.getProperty("spring.datasource.url.qa");
+            if (qaUrl == null) {
+                qaUrl = env.getProperty("SPRING_DATASOURCE_URL_QA");
+            }
+            if (qaUrl == null) {
+                qaUrl = env.getRequiredProperty("spring.datasource.url");
+            }
+            dataSource.setUrl(qaUrl);
+            System.out.println("Using QA database URL: " + qaUrl);
+        } else {
+            // For all other profiles, use the default URL
+            dataSource.setUrl(env.getRequiredProperty("spring.datasource.url"));
+        }
+        
         dataSource.setUsername(env.getRequiredProperty("spring.datasource.username"));
         dataSource.setPassword(env.getRequiredProperty("spring.datasource.password"));
         return dataSource;
