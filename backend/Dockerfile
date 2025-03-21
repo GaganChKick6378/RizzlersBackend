@@ -19,6 +19,7 @@ ARG graphql_api_key
 ARG container_port
 ARG allowed_origins
 ARG ENV
+ARG sql_init_mode=never
 
 # Set environment variables for Maven build
 ENV DATABASE_URL=$database_url \
@@ -28,7 +29,8 @@ ENV DATABASE_URL=$database_url \
     GRAPHQL_API_KEY=$graphql_api_key \
     CONTAINER_PORT=$container_port \
     ALLOWED_ORIGINS=$allowed_origins \
-    ENV=$ENV
+    ENV=$ENV \
+    SQL_INIT_MODE=$sql_init_mode
 
 # Build application
 RUN mvn install -DskipTests
@@ -49,7 +51,8 @@ ENV DATABASE_URL=$database_url \
     GRAPHQL_API_KEY=$graphql_api_key \
     CONTAINER_PORT=$container_port \
     ALLOWED_ORIGINS=$allowed_origins \
-    ENV=$ENV
+    ENV=$ENV \
+    SQL_INIT_MODE=$sql_init_mode
 
 ENTRYPOINT ["java","-cp","app:app/lib/*","com.kdu.rizzlers.RizzlersApplication"]
 
