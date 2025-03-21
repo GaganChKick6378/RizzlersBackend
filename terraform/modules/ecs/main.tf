@@ -107,6 +107,14 @@ resource "aws_ecs_task_definition" "app_task" {
         {
           name  = "SPRING_PROFILES_ACTIVE"
           value = var.environment
+        },
+        {
+          name  = "SQL_INIT_MODE"
+          value = "never"
+        },
+        {
+          name  = "ENV"
+          value = "prod"
         }
       ]
       
