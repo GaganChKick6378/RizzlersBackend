@@ -128,11 +128,11 @@ resource "aws_ecs_task_definition" "app_task" {
       }
       
       healthCheck = {
-        command     = ["CMD-SHELL", "wget -q --spider http://localhost:${var.container_port}${var.health_check_path} || exit 1"]
+        command     = ["CMD-SHELL", "wget -q --spider http://localhost:${var.container_port}/api/health || wget -q --spider http://localhost:${var.container_port}/health || wget -q --spider http://localhost:${var.container_port}/actuator/health || exit 1"]
         interval    = 30
         timeout     = 5
         retries     = 3
-        startPeriod = 60
+        startPeriod = 120
       }
     }
   ])
