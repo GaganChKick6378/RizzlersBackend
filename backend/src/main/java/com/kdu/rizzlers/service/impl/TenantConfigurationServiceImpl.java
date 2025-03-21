@@ -133,17 +133,15 @@ public class TenantConfigurationServiceImpl implements TenantConfigurationServic
         
         // If property details are requested, fetch them
         if (fetchPropertyDetails) {
-            // Get all property assignments for the tenant
-            List<TenantPropertyAssignment> propertyAssignments = tenantPropertyAssignmentRepository.findByTenantIdAndIsAssigned(
-                    tenantId, true);
+            // Get all property assignments for the tenant - including both assigned and unassigned properties
+            List<TenantPropertyAssignment> propertyAssignments = tenantPropertyAssignmentRepository.findByTenantId(tenantId);
             
             // Convert property assignments to response DTOs with additional property details
             List<TenantPropertyAssignmentResponse> propertyResponses = fetchPropertyDetailsWithGraphQL(propertyAssignments);
             builder.properties(propertyResponses);
         } else {
-            // Just get the basic property assignments without enrichment from GraphQL
-            List<TenantPropertyAssignment> propertyAssignments = tenantPropertyAssignmentRepository.findByTenantIdAndIsAssigned(
-                    tenantId, true);
+            // Just get the basic property assignments without enrichment from GraphQL, but including both assigned and unassigned
+            List<TenantPropertyAssignment> propertyAssignments = tenantPropertyAssignmentRepository.findByTenantId(tenantId);
             
             List<TenantPropertyAssignmentResponse> basicPropertyResponses = propertyAssignments.stream()
                 .map(assignment -> TenantPropertyAssignmentResponse.builder()

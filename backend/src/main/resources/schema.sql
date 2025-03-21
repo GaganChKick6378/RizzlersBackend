@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS property_promotion_schedule (
     id BIGSERIAL PRIMARY KEY,
     property_id INTEGER NOT NULL,
     promotion_id INTEGER NOT NULL,
+    price_factor DECIMAL(5,2) NOT NULL DEFAULT 1.0,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
     is_active BOOLEAN DEFAULT TRUE,

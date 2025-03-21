@@ -75,13 +75,13 @@ VALUES
     (1, 24, FALSE, TRUE);
 
 -- Sample promotion schedule data
-INSERT INTO property_promotion_schedule (property_id, promotion_id, start_date, end_date, is_active)
+INSERT INTO property_promotion_schedule (property_id, promotion_id, price_factor, start_date, end_date, is_active)
 VALUES
-    (1, 1, '2023-12-01', '2023-12-31', TRUE),
-    (1, 2, '2024-01-01', '2024-01-31', TRUE),
-    (2, 3, '2023-12-15', '2024-01-15', TRUE),
-    (5, 4, '2023-12-01', '2024-02-29', TRUE),
-    (6, 5, '2024-01-01', '2024-03-31', TRUE);
+    (1, 1, 0.85, '2023-12-01', '2023-12-31', TRUE),
+    (1, 2, 0.75, '2024-01-01', '2024-01-31', TRUE),
+    (2, 3, 0.90, '2023-12-15', '2024-01-15', TRUE),
+    (5, 4, 0.80, '2023-12-01', '2024-02-29', TRUE),
+    (6, 5, 0.70, '2024-01-01', '2024-03-31', TRUE);
 
 -- Sample room type images data
 INSERT INTO room_type_images (tenant_id, room_type_id, property_id, image_urls, display_order, is_active)

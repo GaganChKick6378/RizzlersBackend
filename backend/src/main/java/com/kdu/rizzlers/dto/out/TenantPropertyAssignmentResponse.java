@@ -1,5 +1,6 @@
 package com.kdu.rizzlers.dto.out;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -20,7 +21,7 @@ public class TenantPropertyAssignmentResponse {
     @JsonProperty("id")
     private Long id;
     
-    @JsonProperty("tenant_id")
+    @JsonIgnore
     private Integer tenantId;
     
     @JsonProperty("property_id")
@@ -38,9 +39,9 @@ public class TenantPropertyAssignmentResponse {
     @JsonProperty("is_assigned")
     private Boolean isAssigned;
     
-    @JsonProperty("created_at")
+    @JsonIgnore
     private LocalDateTime createdAt;
     
-    @JsonProperty("updated_at")
+    @JsonIgnore
     private LocalDateTime updatedAt;
 }

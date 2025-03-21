@@ -50,7 +50,7 @@ public class GraphQLPropertyServiceImpl implements GraphQLPropertyService {
         try {
             log.debug("Making POST request to GraphQL endpoint: {}", graphqlUrl);
             
-            // Create a simple GraphQL query to list properties
+            // Create a simple GraphQL query to list all properties, not filtering by IDs to ensure we get all properties
             String query = "{ listProperties { property_id property_name property_address contact_number } }";
             
             // Build the request body
@@ -89,7 +89,7 @@ public class GraphQLPropertyServiceImpl implements GraphQLPropertyService {
                     for (JsonNode property : properties) {
                         Integer id = property.path("property_id").asInt();
                         
-                        // Only include properties with IDs in our input list
+                        // Include all properties that are in our input list
                         if (propertyIds.contains(id)) {
                             PropertyResponse propertyResponse = PropertyResponse.builder()
                                 .propertyId(id)

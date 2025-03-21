@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Data
@@ -26,9 +27,20 @@ public class PropertyPromotionSchedule extends BaseEntity {
     @Column(name = "promotion_id", nullable = false)
     private Integer promotionId;
 
+    @Column(name = "price_factor", nullable = false, precision = 5, scale = 2)
+    private BigDecimal priceFactor = BigDecimal.valueOf(1.0);
+
     @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
 
     @Column(name = "end_date", nullable = false)
     private LocalDate endDate;
+
+    @Column(name = "is_active")
+    private Boolean isActive = true;
+
+    // Helper method to check if a given date falls within this promotion period
+    public boolean isDateInPromotionPeriod(LocalDate date) {
+        return !date.isBefore(startDate) && !date.isAfter(endDate) && Boolean.TRUE.equals(isActive);
+    }
 } 
