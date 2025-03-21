@@ -50,4 +50,8 @@ public class LandingPageConfigResponse {
     // Guest type definitions
     @JsonProperty("guest_types")
     private List<GuestTypeDefinitionResponse> guestTypes;
+    
+    // Properties assigned to the tenant
+    @JsonProperty("properties")
+    private List<TenantPropertyAssignmentResponse> properties;
 } 

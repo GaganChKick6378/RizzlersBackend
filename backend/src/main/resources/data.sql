@@ -49,13 +49,30 @@ VALUES
 -- Sample property assignment data
 INSERT INTO tenant_property_assignment (tenant_id, property_id, is_assigned, is_active)
 VALUES
-    (1, 1, TRUE, TRUE),
-    (1, 2, TRUE, TRUE),
+    (1, 1, FALSE, TRUE),
+    (1, 2, FALSE, TRUE),
     (1, 3, FALSE, TRUE),
     (1, 4, FALSE, TRUE),
-    (2, 5, TRUE, TRUE),
-    (2, 6, TRUE, TRUE),
-    (2, 7, FALSE, TRUE);
+    (1, 5, FALSE, TRUE),
+    (1, 6, FALSE, TRUE),
+    (1, 7, FALSE, TRUE),
+    (1, 8, FALSE, TRUE),
+    (1, 9, FALSE, TRUE),
+    (1, 10, TRUE, TRUE),
+    (1, 11, FALSE, TRUE),
+    (1, 12, FALSE, TRUE),
+    (1, 13, FALSE, TRUE),
+    (1, 14, FALSE, TRUE),
+    (1, 15, FALSE, TRUE),
+    (1, 16, FALSE, TRUE),
+    (1, 17, FALSE, TRUE),
+    (1, 18, FALSE, TRUE),
+    (1, 19, FALSE, TRUE),
+    (1, 20, FALSE, TRUE),
+    (1, 21, FALSE, TRUE),
+    (1, 22, FALSE, TRUE),
+    (1, 23, FALSE, TRUE),
+    (1, 24, FALSE, TRUE);
 
 -- Sample promotion schedule data
 INSERT INTO property_promotion_schedule (property_id, promotion_id, start_date, end_date, is_active)

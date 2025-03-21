@@ -18,4 +18,13 @@ public interface TenantConfigurationService {
     
     // New method to get complete landing page configuration
     LandingPageConfigResponse getLandingPageConfiguration(Integer tenantId);
+
+    /**
+     * Get landing page configuration for a specific tenant
+     * 
+     * @param tenantId The tenant ID
+     * @param fetchPropertyDetails Whether to fetch property details from GraphQL service
+     * @return Landing page configuration response
+     */
+    LandingPageConfigResponse getLandingPageConfiguration(Integer tenantId, boolean fetchPropertyDetails);
 } 
