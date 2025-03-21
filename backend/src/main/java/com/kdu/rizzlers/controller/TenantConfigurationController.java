@@ -56,6 +56,15 @@ public class TenantConfigurationController {
         return ResponseEntity.ok(tenantConfigurationService.getLandingPageConfiguration(tenantId));
     }
 
+    @GetMapping("/tenant/{tenantId}/landing/basic")
+    public ResponseEntity<LandingPageConfigResponse> getBasicLandingPageConfiguration(
+            @PathVariable Integer tenantId,
+            @RequestParam(value = "fetch_property_details", defaultValue = "false") boolean fetchPropertyDetails) {
+        
+        LandingPageConfigResponse config = tenantConfigurationService.getLandingPageConfiguration(tenantId, fetchPropertyDetails);
+        return ResponseEntity.ok(config);
+    }
+
     @PutMapping("/{id}")
     public ResponseEntity<TenantConfigurationResponse> updateConfiguration(
             @PathVariable Long id, @Valid @RequestBody TenantConfigurationRequest request) {
