@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
  * This controller is designed to be extremely lightweight and fast
  */
 @RestController
-@RequestMapping("/api/health")
+@RequestMapping("/health")
 public class AwsHealthCheckController {
 
     /**
