@@ -97,16 +97,19 @@ resource "aws_lb_target_group" "app_tg" {
   target_type = "ip"
   
   health_check {
-    healthy_threshold   = 3
-    interval            = 30
+    healthy_threshold   = 2
+    interval            = 120
     matcher             = "200-299"
     path                = var.health_check_path
     port                = "traffic-port"
-    timeout             = 10
-    unhealthy_threshold = 3
+    timeout             = 60
+    unhealthy_threshold = 10
   }
   
   tags = var.tags
+  
+  # Adding deregistration delay to allow in-flight requests
+  deregistration_delay = 300
 }
 
 # Comment out ACM certificate to avoid validation timeout

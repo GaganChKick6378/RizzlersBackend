@@ -55,6 +55,9 @@ ENV DATABASE_URL=$database_url \
     SQL_INIT_MODE=$sql_init_mode \
     CONTEXT_PATH=/api
 
-ENTRYPOINT ["java","-cp","app:app/lib/*","com.kdu.rizzlers.RizzlersApplication"]
+# JVM optimization for container environments
+ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0 -Djava.security.egd=file:/dev/./urandom -Dspring.jmx.enabled=false -Dspring.config.location=classpath:/application.properties -Dspring.main.lazy-initialization=true"
+
+ENTRYPOINT exec java $JAVA_OPTS -cp app:app/lib/* com.kdu.rizzlers.RizzlersApplication
 # Expose the container port
 EXPOSE ${CONTAINER_PORT}
