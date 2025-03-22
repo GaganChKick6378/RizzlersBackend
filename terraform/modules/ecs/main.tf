@@ -123,6 +123,18 @@ resource "aws_ecs_task_definition" "app_task" {
         {
           name  = "CONTEXT_PATH"
           value = "/api"
+        },
+        {
+          name  = "GRAPHQL_ENDPOINT"
+          value = var.graphql_endpoint
+        },
+        {
+          name  = "GRAPHQL_API_KEY"
+          value = var.graphql_api_key
+        },
+        {
+          name  = "GRAPHQL_API_KEY_HEADER"
+          value = "X-Api-Key"
         }
       ]
       

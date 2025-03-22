@@ -72,4 +72,15 @@ variable "target_group_arn" {
 variable "load_balancer_listener_arn" {
   description = "ARN of the load balancer listener"
   type        = string
+}
+
+variable "graphql_endpoint" {
+  description = "GraphQL API endpoint URL"
+  type        = string
+}
+
+variable "graphql_api_key" {
+  description = "API key for GraphQL API"
+  type        = string
+  sensitive   = true
 } 
