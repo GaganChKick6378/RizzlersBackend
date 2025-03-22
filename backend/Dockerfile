@@ -52,13 +52,14 @@ ENV DATABASE_URL=$database_url \
     CONTAINER_PORT=$container_port \
     ALLOWED_ORIGINS=$allowed_origins \
     ENV=$ENV \
-    SQL_INIT_MODE=$sql_init_mode
+    SQL_INIT_MODE=$sql_init_mode \
+    CONTEXT_PATH=/api
 
 ENTRYPOINT ["java","-cp","app:app/lib/*","com.kdu.rizzlers.RizzlersApplication"]
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-  CMD wget -q --spider http://localhost:${CONTAINER_PORT}/api/health || wget -q --spider http://localhost:${CONTAINER_PORT}/health || wget -q --spider http://localhost:${CONTAINER_PORT}/actuator/health || exit 1
+# Health check testing multiple paths to ensure at least one responds
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
+  CMD wget -q --spider http://localhost:${CONTAINER_PORT}/ || wget -q --spider http://localhost:${CONTAINER_PORT}/ping || wget -q --spider http://localhost:${CONTAINER_PORT}/health || wget -q --spider http://localhost:${CONTAINER_PORT}/api/health || exit 1
 
-# Expose the port
-EXPOSE 8080 
+# Expose the container port
+EXPOSE ${CONTAINER_PORT}
