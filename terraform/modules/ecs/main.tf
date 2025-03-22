@@ -68,8 +68,8 @@ resource "aws_ecs_task_definition" "app_task" {
   family                   = "${var.name_prefix}-task"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = "256"
-  memory                   = "512"
+  cpu                      = "1024"
+  memory                   = "2048"
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
   task_role_arn            = aws_iam_role.ecs_task_role.arn
 
@@ -136,11 +136,11 @@ resource "aws_ecs_task_definition" "app_task" {
       }
       
       healthCheck = {
-        command     = ["CMD-SHELL", "wget -q --spider http://localhost:${var.container_port}/ || wget -q --spider http://localhost:${var.container_port}/ping || wget -q --spider http://localhost:${var.container_port}/health || wget -q --spider http://localhost:${var.container_port}/api/health || exit 1"]
-        interval    = 30
-        timeout     = 10
-        retries     = 3
-        startPeriod = 180
+        command     = ["CMD-SHELL", "wget -q --spider http://localhost:${var.container_port}/api/health || exit 1"]
+        interval    = 60
+        timeout     = 30
+        retries     = 10
+        startPeriod = 300
       }
     }
   ])
