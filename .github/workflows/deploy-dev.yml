@@ -109,11 +109,11 @@ jobs:
           cache: maven
 
       - name: Run Tests
-        run: ./mvnw test
+        run: mvn test
       
       - name: Generate Test Report
         if: success() || failure()
-        run: ./mvnw jacoco:report
+        run: mvn jacoco:report
 
       - name: Archive Test Results
         uses: actions/upload-artifact@v4
