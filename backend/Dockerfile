@@ -56,10 +56,5 @@ ENV DATABASE_URL=$database_url \
     CONTEXT_PATH=/api
 
 ENTRYPOINT ["java","-cp","app:app/lib/*","com.kdu.rizzlers.RizzlersApplication"]
-
-# Health check testing multiple paths to ensure at least one responds
-HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=5 \
-  CMD wget -q --spider http://localhost:${CONTAINER_PORT}/ || wget -q --spider http://localhost:${CONTAINER_PORT}/ping || wget -q --spider http://localhost:${CONTAINER_PORT}/health || wget -q --spider http://localhost:${CONTAINER_PORT}/api/health || exit 1
-
 # Expose the container port
 EXPOSE ${CONTAINER_PORT}
