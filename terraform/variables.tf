@@ -44,8 +44,6 @@ variable "vpc_name" {
   type        = string
 }
 
-
-
 variable "tags" {
   description = "Common tags to apply to all resources"
   type        = map(string)
@@ -59,4 +57,15 @@ variable "public_subnet_ids" {
 variable "private_subnet_ids" {
   description = "List of private subnet IDs in ap-south-1a, ap-south-1b, and ap-south-1c"
   type        = list(string)
+}
+
+variable "graphql_endpoint" {
+  description = "GraphQL API endpoint URL"
+  type        = string
+}
+
+variable "graphql_api_key" {
+  description = "API key for GraphQL API"
+  type        = string
+  sensitive   = true
 } 

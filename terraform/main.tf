@@ -65,6 +65,8 @@ module "ecs" {
   name_prefix     = local.name_prefix
   target_group_arn = module.alb.target_group_arn
   load_balancer_listener_arn = module.alb.http_listener_arn
+  graphql_endpoint = var.graphql_endpoint
+  graphql_api_key = var.graphql_api_key
 }
 
 # Application Load Balancer
