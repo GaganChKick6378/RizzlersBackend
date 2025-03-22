@@ -65,34 +65,6 @@ module "ecs" {
   name_prefix     = local.name_prefix
   target_group_arn = module.alb.target_group_arn
   load_balancer_listener_arn = module.alb.http_listener_arn
-  
-  # Application configuration
-  application_name = var.application_name
-  context_path = var.context_path
-  allow_bean_definition_overriding = var.allow_bean_definition_overriding
-  
-  # Database configuration
-  database_driver = var.database_driver
-  jpa_hibernate_ddl_auto = var.jpa_hibernate_ddl_auto
-  sql_init_mode = var.sql_init_mode
-  
-  # Flyway configuration
-  flyway_enabled = var.flyway_enabled
-  flyway_baseline_on_migrate = var.flyway_baseline_on_migrate
-  
-  # CORS Configuration
-  cors_allowed_origins = var.cors_allowed_origins
-  cors_allowed_methods = var.cors_allowed_methods
-  cors_allowed_headers = var.cors_allowed_headers
-  cors_max_age = var.cors_max_age
-  
-  # Actuator Configuration
-  management_endpoints_web_exposure = var.management_endpoints_web_exposure
-  management_endpoint_health_show_details = var.management_endpoint_health_show_details
-  management_endpoints_web_base_path = var.management_endpoints_web_base_path
-  management_health_probes_enabled = var.management_health_probes_enabled
-  management_health_livenessState_enabled = var.management_health_livenessState_enabled
-  management_health_readinessState_enabled = var.management_health_readinessState_enabled
 }
 
 # Application Load Balancer
