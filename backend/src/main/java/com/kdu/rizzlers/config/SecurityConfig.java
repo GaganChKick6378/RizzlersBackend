@@ -21,7 +21,10 @@ public class SecurityConfig {
             .formLogin(AbstractHttpConfigurer::disable) // Disable form login
             .httpBasic(AbstractHttpConfigurer::disable) // Disable HTTP Basic
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/**").permitAll() // Allow all requests without authentication
+                // Explicitly permit health check endpoints with highest priority
+                .requestMatchers("/", "/ping", "/health", "/healthcheck", "/api/health", "/actuator/health").permitAll()
+                // Allow all other requests without authentication
+                .requestMatchers("/**").permitAll()
             );
         
         return http.build();

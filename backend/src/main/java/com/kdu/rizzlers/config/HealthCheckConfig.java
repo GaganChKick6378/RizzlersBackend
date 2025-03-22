@@ -69,4 +69,32 @@ public class HealthCheckConfig {
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
         return registration;
     }
+    
+    /**
+     * Dedicated filter specifically for the ELB health check path at /api/health
+     * This ensures the ELB health check always gets a quick and reliable response
+     */
+    @Bean
+    public FilterRegistrationBean<OncePerRequestFilter> elbHealthCheckFilter() {
+        FilterRegistrationBean<OncePerRequestFilter> registration = new FilterRegistrationBean<>();
+        
+        registration.setFilter(new OncePerRequestFilter() {
+            @Override
+            protected void doFilterInternal(HttpServletRequest request, 
+                                            HttpServletResponse response, 
+                                            FilterChain filterChain) throws ServletException, IOException {
+                
+                // Immediate response for ELB health checks, bypassing all other filters
+                response.setContentType("application/json");
+                response.setStatus(HttpServletResponse.SC_OK);
+                response.getWriter().write("{\"status\":\"UP\",\"service\":\"Rizzlers Backend API\",\"timestamp\":" + System.currentTimeMillis() + "}");
+            }
+        });
+        
+        // Specifically target the ELB health check path
+        registration.addUrlPatterns("/api/health");
+        // Set to highest priority to ensure it runs before any other filters
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        return registration;
+    }
 } 
