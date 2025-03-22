@@ -7,13 +7,17 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.servlet.util.matcher.MvcRequestMatcher;
+import org.springframework.web.servlet.handler.HandlerMappingIntrospector;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, HandlerMappingIntrospector introspector) throws Exception {
+        MvcRequestMatcher.Builder mvcMatcherBuilder = new MvcRequestMatcher.Builder(introspector);
+        
         http
             .csrf(AbstractHttpConfigurer::disable) // Disable CSRF protection
             .cors(AbstractHttpConfigurer::disable) // Disable CORS protection
@@ -22,9 +26,16 @@ public class SecurityConfig {
             .httpBasic(AbstractHttpConfigurer::disable) // Disable HTTP Basic
             .authorizeHttpRequests(auth -> auth
                 // Explicitly permit health check endpoints with highest priority
-                .requestMatchers("/", "/ping", "/health", "/healthcheck", "/api/health", "/actuator/health").permitAll()
+                .requestMatchers(
+                    mvcMatcherBuilder.pattern("/"),
+                    mvcMatcherBuilder.pattern("/ping"),
+                    mvcMatcherBuilder.pattern("/health"),
+                    mvcMatcherBuilder.pattern("/healthcheck"),
+                    mvcMatcherBuilder.pattern("/api/health"),
+                    mvcMatcherBuilder.pattern("/actuator/health")
+                ).permitAll()
                 // Allow all other requests without authentication
-                .requestMatchers("/**").permitAll()
+                .requestMatchers(mvcMatcherBuilder.pattern("/**")).permitAll()
             );
         
         return http.build();
