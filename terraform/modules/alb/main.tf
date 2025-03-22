@@ -102,7 +102,7 @@ resource "aws_lb_target_group" "app_tg" {
     matcher             = "200-299"
     path                = var.health_check_path
     port                = "traffic-port"
-    timeout             = 5
+    timeout             = 10
     unhealthy_threshold = 3
   }
   
