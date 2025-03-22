@@ -139,7 +139,7 @@ resource "aws_ecs_task_definition" "app_task" {
         command     = ["CMD-SHELL", "wget -q --spider http://localhost:${var.container_port}/ || wget -q --spider http://localhost:${var.container_port}/ping || wget -q --spider http://localhost:${var.container_port}/health || wget -q --spider http://localhost:${var.container_port}/api/health || exit 1"]
         interval    = 30
         timeout     = 10
-        retries     = 5
+        retries     = 3
         startPeriod = 180
       }
     }
