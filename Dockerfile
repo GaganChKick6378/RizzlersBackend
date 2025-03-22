@@ -50,5 +50,5 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 EXPOSE 8080
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD wget -q --spider http://localhost:8080/api/health || exit 1 

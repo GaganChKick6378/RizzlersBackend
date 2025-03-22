@@ -30,7 +30,7 @@ resource "aws_lb_target_group" "alb_target_group" {
     path                = "/"
     healthy_threshold   = 3
     unhealthy_threshold = 3
-    timeout             = 5
+    timeout             = 10
     matcher             = "200-399"
   }
 
