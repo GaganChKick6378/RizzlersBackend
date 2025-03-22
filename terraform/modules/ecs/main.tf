@@ -88,6 +88,7 @@ resource "aws_ecs_task_definition" "app_task" {
       ]
       
       environment = [
+        # Database Configuration
         {
           name  = "SPRING_DATASOURCE_URL"
           value = var.database_url
@@ -101,6 +102,28 @@ resource "aws_ecs_task_definition" "app_task" {
           value = var.database_password
         },
         {
+          name  = "SPRING_DATASOURCE_DRIVER_CLASS_NAME"
+          value = var.database_driver
+        },
+        {
+          name  = "SPRING_JPA_HIBERNATE_DDL_AUTO"
+          value = var.jpa_hibernate_ddl_auto
+        },
+        
+        # Application Configuration
+        {
+          name  = "SPRING_APPLICATION_NAME"
+          value = var.application_name
+        },
+        {
+          name  = "SERVER_PORT"
+          value = tostring(var.container_port)
+        },
+        {
+          name  = "CONTEXT_PATH"
+          value = var.context_path
+        },
+        {
           name  = "APPLICATION_ENVIRONMENT"
           value = var.environment
         },
@@ -109,12 +132,78 @@ resource "aws_ecs_task_definition" "app_task" {
           value = var.environment
         },
         {
+          name  = "SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING"
+          value = tostring(var.allow_bean_definition_overriding)
+        },
+        
+        # Initialization Mode
+        {
           name  = "SQL_INIT_MODE"
-          value = "never"
+          value = var.sql_init_mode
         },
         {
           name  = "ENV"
-          value = "prod"
+          value = var.environment
+        },
+        
+        # Flyway Configuration
+        {
+          name  = "SPRING_FLYWAY_ENABLED"
+          value = tostring(var.flyway_enabled)
+        },
+        {
+          name  = "SPRING_FLYWAY_BASELINE_ON_MIGRATE"
+          value = tostring(var.flyway_baseline_on_migrate)
+        },
+        
+        # CORS Configuration
+        {
+          name  = "APPLICATION_CORS_ALLOWED_ORIGINS"
+          value = var.cors_allowed_origins
+        },
+        {
+          name  = "APPLICATION_CORS_ALLOWED_METHODS"
+          value = var.cors_allowed_methods
+        },
+        {
+          name  = "APPLICATION_CORS_ALLOWED_HEADERS"
+          value = var.cors_allowed_headers
+        },
+        {
+          name  = "APPLICATION_CORS_MAX_AGE"
+          value = tostring(var.cors_max_age)
+        },
+        
+        # Actuator Configuration
+        {
+          name  = "MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE"
+          value = var.management_endpoints_web_exposure
+        },
+        {
+          name  = "MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS"
+          value = var.management_endpoint_health_show_details
+        },
+        {
+          name  = "MANAGEMENT_ENDPOINTS_WEB_BASE_PATH"
+          value = var.management_endpoints_web_base_path
+        },
+        {
+          name  = "MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED"
+          value = tostring(var.management_health_probes_enabled)
+        },
+        {
+          name  = "MANAGEMENT_HEALTH_LIVENESSSTATE_ENABLED"
+          value = tostring(var.management_health_livenessState_enabled)
+        },
+        {
+          name  = "MANAGEMENT_HEALTH_READINESSSTATE_ENABLED"
+          value = tostring(var.management_health_readinessState_enabled)
+        },
+        
+        # Basic Configuration
+        {
+          name  = "CONTAINER_PORT"
+          value = tostring(var.container_port)
         }
       ]
       
@@ -128,7 +217,7 @@ resource "aws_ecs_task_definition" "app_task" {
       }
       
       healthCheck = {
-        command     = ["CMD-SHELL", "wget -q --spider http://localhost:${var.container_port}/api/health || wget -q --spider http://localhost:${var.container_port}/health || wget -q --spider http://localhost:${var.container_port}/actuator/health || exit 1"]
+        command     = ["CMD-SHELL", "wget -q --spider http://localhost:${var.container_port}/ || wget -q --spider http://localhost:${var.container_port}/ping || wget -q --spider http://localhost:${var.container_port}/health || wget -q --spider http://localhost:${var.container_port}/api/health || exit 1"]
         interval    = 30
         timeout     = 5
         retries     = 3
