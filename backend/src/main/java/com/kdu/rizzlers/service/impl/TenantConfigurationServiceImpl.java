@@ -7,11 +7,8 @@ import com.kdu.rizzlers.dto.out.PropertyResponse;
 import com.kdu.rizzlers.dto.out.TenantConfigurationResponse;
 import com.kdu.rizzlers.dto.out.TenantPropertyAssignmentResponse;
 import com.kdu.rizzlers.entity.TenantConfiguration;
-import com.kdu.rizzlers.entity.TenantPropertyAssignment;
 import com.kdu.rizzlers.exception.ResourceNotFoundException;
 import com.kdu.rizzlers.repository.TenantConfigurationRepository;
-import com.kdu.rizzlers.repository.TenantPropertyAssignmentRepository;
-import com.kdu.rizzlers.service.GraphQLPropertyService;
 import com.kdu.rizzlers.service.GuestTypeDefinitionService;
 import com.kdu.rizzlers.service.TenantConfigurationService;
 import com.kdu.rizzlers.util.JsonUtil;
@@ -20,23 +17,24 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * Implementation of the TenantConfigurationService.
+ * This class has been refactored to use helper classes for specific functionalities.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class TenantConfigurationServiceImpl implements TenantConfigurationService {
 
     private final TenantConfigurationRepository tenantConfigurationRepository;
-    private final TenantPropertyAssignmentRepository tenantPropertyAssignmentRepository;
     private final GuestTypeDefinitionService guestTypeDefinitionService;
-    private final GraphQLPropertyService graphQLPropertyService;
+    private final PropertyServiceHelper propertyServiceHelper;
+    private final ConfigurationValidator configValidator;
+    private final ConfigurationDefaultProvider defaultProvider;
 
     @Override
     @Transactional
@@ -117,13 +115,16 @@ public class TenantConfigurationServiceImpl implements TenantConfigurationServic
     
     @Override
     public LandingPageConfigResponse getLandingPageConfiguration(Integer tenantId, boolean fetchPropertyDetails) {
-        // Get all landing page configurations for the tenant
+        log.info("Getting landing page configuration for tenant: {}, fetchPropertyDetails: {}", tenantId, fetchPropertyDetails);
+        
+        // Get configurations from the database
         List<TenantConfiguration> configurations = tenantConfigurationRepository.findByTenantIdAndPageAndIsActive(
                 tenantId, "landing", true);
         
-        // Get all guest type definitions for the tenant
-        List<GuestTypeDefinitionResponse> guestTypes = guestTypeDefinitionService.getGuestTypeDefinitionsByTenantIdAndIsActive(
-                tenantId, true);
+        log.debug("Found {} active configurations for tenant: {}", configurations.size(), tenantId);
+        
+        // Get guest type definitions
+        List<GuestTypeDefinitionResponse> guestTypes = guestTypeDefinitionService.getGuestTypeDefinitionsByTenantId(tenantId);
         
         // Create response builder (without property details initially)
         LandingPageConfigResponse.LandingPageConfigResponseBuilder builder = LandingPageConfigResponse.builder()
@@ -131,67 +132,15 @@ public class TenantConfigurationServiceImpl implements TenantConfigurationServic
                 .page("landing")
                 .guestTypes(guestTypes);
         
-        // If property details are requested, fetch them
-        if (fetchPropertyDetails) {
-            // Get all property assignments for the tenant - including both assigned and unassigned properties
-            List<TenantPropertyAssignment> propertyAssignments = tenantPropertyAssignmentRepository.findByTenantId(tenantId);
-            
-            // Convert property assignments to response DTOs with additional property details
-            List<TenantPropertyAssignmentResponse> propertyResponses = fetchPropertyDetailsWithGraphQL(propertyAssignments);
-            builder.properties(propertyResponses);
-        } else {
-            // Just get the basic property assignments without enrichment from GraphQL, but including both assigned and unassigned
-            List<TenantPropertyAssignment> propertyAssignments = tenantPropertyAssignmentRepository.findByTenantId(tenantId);
-            
-            List<TenantPropertyAssignmentResponse> basicPropertyResponses = propertyAssignments.stream()
-                .map(assignment -> TenantPropertyAssignmentResponse.builder()
-                    .id(assignment.getId())
-                    .tenantId(assignment.getTenantId())
-                    .propertyId(assignment.getPropertyId())
-                    .isAssigned(assignment.getIsAssigned())
-                    .createdAt(assignment.getCreatedAt())
-                    .updatedAt(assignment.getUpdatedAt())
-                    .build())
-                .collect(Collectors.toList());
-            
-            builder.properties(basicPropertyResponses);
-        }
+        // Set default values for all fields to ensure no null values in the response
+        defaultProvider.setDefaultConfigValues(builder);
+        
+        // Set property assignments
+        List<TenantPropertyAssignmentResponse> propertyResponses = propertyServiceHelper.getPropertyAssignments(tenantId, fetchPropertyDetails);
+        builder.properties(propertyResponses);
         
         // Map each configuration to the corresponding field in the response
-        for (TenantConfiguration config : configurations) {
-            String field = config.getField();
-            Map<String, Object> valueMap = JsonUtil.jsonToMap(config.getValue());
-            
-            switch (field) {
-                case "header_logo":
-                    builder.headerLogo(valueMap);
-                    break;
-                case "page_title":
-                    builder.pageTitle(valueMap);
-                    break;
-                case "banner_image":
-                    builder.bannerImage(valueMap);
-                    break;
-                case "length_of_stay":
-                    builder.lengthOfStay(valueMap);
-                    break;
-                case "guest_options":
-                    builder.guestOptions(valueMap);
-                    break;
-                case "room_options":
-                    builder.roomOptions(valueMap);
-                    break;
-                case "accessibility_options":
-                    builder.accessibilityOptions(valueMap);
-                    break;
-                case "number_of_rooms":
-                    builder.numberOfRooms(valueMap);
-                    break;
-                default:
-                    // Ignore other fields
-                    break;
-            }
-        }
+        processConfigurations(configurations, builder);
         
         return builder.build();
     }
@@ -201,121 +150,109 @@ public class TenantConfigurationServiceImpl implements TenantConfigurationServic
         return getLandingPageConfiguration(tenantId, true);
     }
     
-    private List<TenantPropertyAssignmentResponse> fetchPropertyDetailsWithGraphQL(List<TenantPropertyAssignment> propertyAssignments) {
-        if (propertyAssignments.isEmpty()) {
-            log.debug("No property assignments to process");
-            return new ArrayList<>();
-        }
-        
-        // Extract property IDs to fetch from GraphQL
-        List<Integer> propertyIds = propertyAssignments.stream()
-                .map(TenantPropertyAssignment::getPropertyId)
-                .collect(Collectors.toList());
-        
-        log.info("Fetching property details for {} properties with IDs: {}", 
-                propertyIds.size(), propertyIds);
-        
-        // Fetch property details from GraphQL service
-        List<PropertyResponse> propertyDetails = new ArrayList<>();
-        try {
-            propertyDetails = graphQLPropertyService.getPropertiesByIds(propertyIds);
-            log.info("Retrieved {} properties from GraphQL", propertyDetails.size());
-        } catch (Exception e) {
-            log.error("Error calling GraphQL service: {}", e.getMessage(), e);
-        }
-        
-        // Create a map for easy property lookup
-        Map<Integer, PropertyResponse> propertyMap = propertyDetails.stream()
-                .collect(Collectors.toMap(
-                    PropertyResponse::getPropertyId, 
-                    property -> property, 
-                    (existing, replacement) -> existing
-                ));
-        
-        // Map property assignments to response objects
-        return propertyAssignments.stream().map(assignment -> {
-            Integer propertyId = assignment.getPropertyId();
+    /**
+     * Process each configuration and apply it to the builder if valid
+     * 
+     * @param configurations List of tenant configurations
+     * @param builder The response builder to update
+     */
+    private void processConfigurations(List<TenantConfiguration> configurations, 
+                                      LandingPageConfigResponse.LandingPageConfigResponseBuilder builder) {
+        for (TenantConfiguration config : configurations) {
+            String field = config.getField();
+            Map<String, Object> valueMap;
             
-            // Start building the response with assignment data
-            TenantPropertyAssignmentResponse.TenantPropertyAssignmentResponseBuilder builder = 
-                TenantPropertyAssignmentResponse.builder()
-                    .id(assignment.getId())
-                    .tenantId(assignment.getTenantId())
-                    .propertyId(propertyId)
-                    .isAssigned(assignment.getIsAssigned())
-                    .createdAt(assignment.getCreatedAt())
-                    .updatedAt(assignment.getUpdatedAt());
-            
-            // Enrich with property details if available
-            PropertyResponse property = propertyMap.get(propertyId);
-            if (property != null) {
-                builder.propertyName(property.getPropertyName())
-                       .propertyAddress(property.getPropertyAddress())
-                       .contactNumber(property.getContactNumber());
-                
-                log.debug("Found property details for ID {}: {}", 
-                        propertyId, property.getPropertyName());
-            } else {
-                log.debug("No property details found for ID {}", propertyId);
-            }
-            
-            return builder.build();
-        }).collect(Collectors.toList());
-    }
-
-    private void appendPropertyDetails(List<TenantPropertyAssignmentResponse> propertyAssignments) {
-        if (propertyAssignments == null || propertyAssignments.isEmpty()) {
-            log.debug("No property assignments to append details to");
-            return;
-        }
-        
-        List<Integer> propertyIds = propertyAssignments.stream()
-                .map(TenantPropertyAssignmentResponse::getPropertyId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
-        
-        if (propertyIds.isEmpty()) {
-            log.debug("No valid property IDs found in assignments");
-            return;
-        }
-        
-        try {
-            log.debug("Fetching property details for property IDs: {}", propertyIds);
-            List<PropertyResponse> properties = graphQLPropertyService.getPropertiesByIds(propertyIds);
-            
-            if (properties == null || properties.isEmpty()) {
-                log.warn("No property details returned from GraphQL for property IDs: {}", propertyIds);
-                return;
-            }
-            
-            // Create a map for easy lookup
-            Map<Integer, PropertyResponse> propertyMap = properties.stream()
-                    .collect(Collectors.toMap(
-                            PropertyResponse::getPropertyId,
-                            Function.identity(),
-                            (existing, replacement) -> existing));
-            
-            // Append property details to each assignment
-            for (TenantPropertyAssignmentResponse assignment : propertyAssignments) {
-                Integer propertyId = assignment.getPropertyId();
-                if (propertyId != null) {
-                    PropertyResponse property = propertyMap.get(propertyId);
-                    if (property != null) {
-                        // Set each property field individually
-                        assignment.setPropertyName(property.getPropertyName());
-                        assignment.setPropertyAddress(property.getPropertyAddress());
-                        assignment.setContactNumber(property.getContactNumber());
-                        
-                        log.debug("Set property details for property ID: {}", propertyId);
-                    } else {
-                        // Property not found in GraphQL response
-                        log.debug("Property ID {} not found in GraphQL response", propertyId);
-                    }
+            try {
+                valueMap = JsonUtil.jsonToMap(config.getValue());
+                if (valueMap == null || valueMap.isEmpty()) {
+                    log.warn("Empty or invalid JSON for field: {}, tenant: {}", field, config.getTenantId());
+                    continue; // Skip this field, use default value
                 }
+            } catch (Exception e) {
+                log.error("Error parsing JSON for field: {}, tenant: {}, error: {}", 
+                          field, config.getTenantId(), e.getMessage());
+                continue; // Skip this field, use default value
             }
             
-        } catch (Exception e) {
-            log.error("Error fetching property details: {}", e.getMessage(), e);
+            // Validate and set each field
+            try {
+                applyConfigurationField(field, valueMap, builder);
+            } catch (Exception e) {
+                log.error("Error validating field: {}, tenant: {}, error: {}", 
+                          field, config.getTenantId(), e.getMessage());
+                // Continue with the next field, keeping the default value for this one
+            }
+        }
+    }
+    
+    /**
+     * Apply a single configuration field to the builder if valid
+     * 
+     * @param field The configuration field name
+     * @param valueMap The configuration value as a map
+     * @param builder The response builder to update
+     */
+    private void applyConfigurationField(String field, Map<String, Object> valueMap, 
+                                        LandingPageConfigResponse.LandingPageConfigResponseBuilder builder) {
+        switch (field) {
+            case "header_logo":
+                if (configValidator.validateHeaderLogo(valueMap)) {
+                    builder.headerLogo(valueMap);
+                }
+                break;
+            case "page_title":
+                if (configValidator.validatePageTitle(valueMap)) {
+                    builder.pageTitle(valueMap);
+                }
+                break;
+            case "banner_image":
+                if (configValidator.validateBannerImage(valueMap)) {
+                    builder.bannerImage(valueMap);
+                }
+                break;
+            case "footer":
+                if (configValidator.validateFooter(valueMap)) {
+                    builder.footer(valueMap);
+                }
+                break;
+            case "languages":
+                if (configValidator.validateLanguages(valueMap)) {
+                    builder.languages(valueMap);
+                }
+                break;
+            case "currencies":
+                if (configValidator.validateCurrencies(valueMap)) {
+                    builder.currencies(valueMap);
+                }
+                break;
+            case "length_of_stay":
+                if (configValidator.validateLengthOfStay(valueMap)) {
+                    builder.lengthOfStay(valueMap);
+                }
+                break;
+            case "guest_options":
+                if (configValidator.validateGuestOptions(valueMap)) {
+                    builder.guestOptions(valueMap);
+                }
+                break;
+            case "room_options":
+                if (configValidator.validateRoomOptions(valueMap)) {
+                    builder.roomOptions(valueMap);
+                }
+                break;
+            case "accessibility_options":
+                if (configValidator.validateAccessibilityOptions(valueMap)) {
+                    builder.accessibilityOptions(valueMap);
+                }
+                break;
+            case "number_of_rooms":
+                if (configValidator.validateNumberOfRooms(valueMap)) {
+                    builder.numberOfRooms(valueMap);
+                }
+                break;
+            default:
+                log.warn("Unknown configuration field: {}", field);
+                break;
         }
     }
 
@@ -330,5 +267,5 @@ public class TenantConfigurationServiceImpl implements TenantConfigurationServic
                 .createdAt(configuration.getCreatedAt())
                 .updatedAt(configuration.getUpdatedAt())
                 .build();
-    }
+    }    
 } 
