@@ -291,6 +291,9 @@ public class TenantConfigurationServiceTest {
         assertEquals(1, response.getProperties().size());
         assertNotNull(response.getHeaderLogo());
         assertNotNull(response.getPageTitle());
+        assertNotNull(response.getFooter());
+        assertNotNull(response.getLanguages());
+        assertNotNull(response.getCurrencies());
 
         verify(tenantConfigurationRepository).findByTenantIdAndPageAndIsActive(tenantId, "landing", true);
         verify(guestTypeDefinitionService).getGuestTypeDefinitionsByTenantIdAndIsActive(tenantId, true);
@@ -325,6 +328,9 @@ public class TenantConfigurationServiceTest {
         assertEquals(1, response.getProperties().size());
         assertNotNull(response.getHeaderLogo());
         assertNotNull(response.getPageTitle());
+        assertNotNull(response.getFooter());
+        assertNotNull(response.getLanguages());
+        assertNotNull(response.getCurrencies());
 
         verify(tenantConfigurationRepository).findByTenantIdAndPageAndIsActive(tenantId, "landing", true);
         verify(guestTypeDefinitionService).getGuestTypeDefinitionsByTenantIdAndIsActive(tenantId, true);
@@ -362,6 +368,36 @@ public class TenantConfigurationServiceTest {
                 .page("landing")
                 .field("banner_image")
                 .value("{\"url\":\"https://example.com/banner.jpg\",\"alt\":\"Banner\"}")
+                .isActive(true)
+                .build());
+        
+        // Footer
+        configurations.add(TenantConfiguration.builder()
+                .id(4L)
+                .tenantId(tenantId)
+                .page("landing")
+                .field("footer")
+                .value("{\"image\":{\"url\":\"https://example.com/footer-logo.png\",\"alt\":\"Footer Logo\"},\"desc\":\"Your trusted travel partner since 1995\",\"copyright\":\"© 2023 Company Name\"}")
+                .isActive(true)
+                .build());
+        
+        // Languages
+        configurations.add(TenantConfiguration.builder()
+                .id(5L)
+                .tenantId(tenantId)
+                .page("landing")
+                .field("languages")
+                .value("{\"options\":[{\"code\":\"EN\",\"name\":\"English\",\"active\":true},{\"code\":\"ES\",\"name\":\"Español\",\"active\":true},{\"code\":\"FR\",\"name\":\"Français\",\"active\":true},{\"code\":\"DE\",\"name\":\"Deutsch\",\"active\":true},{\"code\":\"IT\",\"name\":\"Italiano\",\"active\":true}],\"default\":\"EN\"}")
+                .isActive(true)
+                .build());
+        
+        // Currencies
+        configurations.add(TenantConfiguration.builder()
+                .id(6L)
+                .tenantId(tenantId)
+                .page("landing")
+                .field("currencies")
+                .value("{\"options\":[{\"code\":\"USD\",\"symbol\":\"$\",\"name\":\"US Dollar\",\"active\":true},{\"code\":\"EUR\",\"symbol\":\"€\",\"name\":\"Euro\",\"active\":true},{\"code\":\"GBP\",\"symbol\":\"£\",\"name\":\"British Pound\",\"active\":true},{\"code\":\"INR\",\"symbol\":\"₹\",\"name\":\"Indian Rupee\",\"active\":true}],\"default\":\"USD\"}")
                 .isActive(true)
                 .build());
         

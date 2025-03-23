@@ -27,6 +27,42 @@ public class LandingPageConfigResponse {
     @JsonProperty("banner_image")
     private Map<String, Object> bannerImage;
     
+    // Footer configuration
+    @JsonProperty("footer")
+    private Map<String, Object> footer;
+    
+    /**
+     * Languages configuration with available language options
+     * 
+     * Example JSON structure:
+     * {
+     *   "options": [
+     *     {"code": "EN", "name": "English", "active": true},
+     *     {"code": "ES", "name": "Español", "active": true},
+     *     {"code": "FR", "name": "Français", "active": true}
+     *   ],
+     *   "default": "EN"
+     * }
+     */
+    @JsonProperty("languages")
+    private Map<String, Object> languages;
+    
+    /**
+     * Currencies configuration with available currency options
+     * 
+     * Example JSON structure:
+     * {
+     *   "options": [
+     *     {"code": "USD", "symbol": "$", "name": "US Dollar", "active": true},
+     *     {"code": "EUR", "symbol": "€", "name": "Euro", "active": true},
+     *     {"code": "GBP", "symbol": "£", "name": "British Pound", "active": true}
+     *   ],
+     *   "default": "USD"
+     * }
+     */
+    @JsonProperty("currencies")
+    private Map<String, Object> currencies;
+    
     // Stay configuration
     @JsonProperty("length_of_stay")
     private Map<String, Object> lengthOfStay;
