@@ -1,0 +1,33 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL
+    username: sa
+    password: 
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.H2Dialect
+  flyway:
+    enabled: false # Disable Flyway for tests to use schema.sql instead
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+    
+# Set all environment variables used in the application
+graphql_endpoint: http://mockapi.example.com/graphql
+graphql.endpoint: http://mockapi.example.com/graphql
+container_port: 8080
+server:
+  port: 8080
+
+logging:
+  level:
+    com.kdu.rizzlers: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.flywaydb: DEBUG 

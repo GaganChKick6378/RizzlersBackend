@@ -1,0 +1,57 @@
+### Java ###
+*.class
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
+hs_err_pid*
+replay_pid*
+
+### Maven ###
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+### Spring Boot ###
+*.log
+*.gz
+logs/
+
+### IDE ###
+### IntelliJ IDEA ###
+.idea/
+*.iws
+*.iml
+*.ipr
+
+### Eclipse ###
+.classpath
+.project
+.settings/
+.metadata/
+bin/
+
+### VS Code ###
+.vscode/
+.history/
+
+### Others ###
+.DS_Store
+Thumbs.db
+.env
+node_modules/
+dist/
+
+### Application-specific ###
+application-local.properties
+application-*.local.properties 
