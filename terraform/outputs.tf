@@ -52,4 +52,20 @@ output "environment" {
 output "name_prefix" {
   description = "Resource naming prefix used for all resources"
   value       = local.name_prefix
+}
+
+# Static Assets Outputs
+output "static_assets_bucket_name" {
+  description = "Name of the S3 bucket for static assets"
+  value       = module.static_assets.bucket_name
+}
+
+output "static_assets_cloudfront_domain" {
+  description = "CloudFront domain name for static assets"
+  value       = module.static_assets.cloudfront_domain_name
+}
+
+output "static_assets_url" {
+  description = "URL for accessing static assets via CloudFront"
+  value       = "https://${module.static_assets.cloudfront_domain_name}"
 } 
