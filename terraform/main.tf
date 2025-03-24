@@ -119,4 +119,14 @@ module "cloudwatch" {
   environment  = local.environment
   tags         = local.tags
   name_prefix  = local.name_prefix
+}
+
+# Static Assets (S3 + CloudFront)
+module "static_assets" {
+  source       = "./modules/static_assets"
+  project_name = var.project_name
+  environment  = local.environment
+  tags         = local.tags
+  name_prefix  = local.name_prefix
+  cors_allowed_origins = ["*"] # Allow all origins (modify as needed)
 } 
