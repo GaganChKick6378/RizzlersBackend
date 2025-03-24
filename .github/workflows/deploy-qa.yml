@@ -69,6 +69,10 @@ jobs:
           database_username  = "${{ secrets.DB_USERNAME }}"
           database_password  = "${{ secrets.DB_PASSWORD }}"
 
+          # GraphQL configuration
+          graphql_endpoint = "${{ secrets.GRAPHQL_ENDPOINT }}"
+          graphql_api_key  = "${{ secrets.GRAPHQL_API_KEY }}"
+          
           # VPC and networking
           vpc_name          = "KDU-25-VPC"
           public_subnet_ids  = ${{ secrets.TF_VAR_PUBLIC_SUBNET_IDS }}
