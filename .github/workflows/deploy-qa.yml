@@ -1,0 +1,203 @@
+name: Deploy Rizzlers Backend (QA)
+
+on:
+  push:
+    branches:
+      - QA
+  
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY: ibe-rizzlers-qa
+
+jobs:
+  approval:
+    name: "Manual Approval"
+    runs-on: ubuntu-latest
+    environment:
+      name: qa-approval
+      
+    steps:
+      - name: Approval Notification
+        run: echo "Deployment has been approved"
+
+  terraform:
+    name: "Deploy Infrastructure"
+    needs: approval
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./terraform
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Select QA Workspace
+        run: terraform workspace select qa || terraform workspace new qa
+
+      - name: Create qa.tfvars file
+        run: |
+          cat > qa.tfvars <<EOF
+          # General configuration
+          aws_region   = "${{ env.AWS_REGION }}"
+          project_name = "IBE"
+          team_name    = "rizzlers"
+
+          # Container configuration
+          container_port     = 8080
+          health_check_path  = "/api/health"
+          allowed_origins    = "http://localhost:3000,https://d1yi08pshszdit.cloudfront.net/,chrome-extension://gmehhhfompinmcoabokhckceachkjmha"
+          ENV                = "qa"
+
+          # Database configuration
+          database_url       = "${{ secrets.QA_DATABASE_URL }}"
+          database_username  = "${{ secrets.DB_USERNAME }}"
+          database_password  = "${{ secrets.DB_PASSWORD }}"
+
+          # GraphQL configuration
+          graphql_endpoint = "${{ secrets.GRAPHQL_ENDPOINT }}"
+          graphql_api_key  = "${{ secrets.GRAPHQL_API_KEY }}"
+
+          # VPC and networking
+          vpc_name          = "KDU-25-VPC"
+          public_subnet_ids  = ${{ secrets.TF_VAR_PUBLIC_SUBNET_IDS }}
+          private_subnet_ids = ${{ secrets.TF_VAR_PRIVATE_SUBNET_IDS }}
+
+          # Tags
+          tags = {
+            Name    = "Rizzlers-Backend"
+            Creator = "RizzlersTeam"
+            Purpose = "IBE"
+          }
+          EOF
+
+      - name: Terraform Plan
+        id: plan
+        run: | 
+          cat qa.tfvars
+          terraform plan -var-file=qa.tfvars -out=tfplan
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+
+      - name: Save Terraform Outputs
+        id: terraform-outputs
+        run: |
+          echo "ECR_REPOSITORY_URL=$(terraform output -raw ecr_repository_url)" >> $GITHUB_ENV
+
+  test:
+    name: "Run Tests"
+    needs: [terraform]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run Tests
+        run: mvn test
+      
+      - name: Generate Test Report
+        if: success() || failure()
+        run: mvn jacoco:report
+
+      - name: Archive Test Results
+        uses: actions/upload-artifact@v4
+        if: success() || failure()
+        with:
+          name: test-results
+          path: |
+            backend/target/surefire-reports/
+            backend/target/site/jacoco/
+
+  build-and-deploy:
+    name: "Build and Deploy Backend"
+    needs: [terraform, test]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Build a docker container and push it to ECR
+          docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG \
+            --build-arg database_url="${{ secrets.QA_DATABASE_URL }}" \
+            --build-arg database_username="${{ secrets.DB_USERNAME }}" \
+            --build-arg database_password="${{ secrets.DB_PASSWORD }}" \
+            --build-arg graphql_endpoint="${{ secrets.GRAPHQL_ENDPOINT }}" \
+            --build-arg graphql_api_key="${{ secrets.GRAPHQL_API_KEY }}" \
+            --build-arg container_port="8080" \
+            --build-arg allowed_origins="http://localhost:3000,https://d327h6huibdsc6.cloudfront.net/,chrome-extension://gmehhhfompinmcoabokhckceachkjmha" \
+            --build-arg ENV="qa" \
+            .
+          docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
+          docker tag $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+          docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+          echo "::set-output name=image::$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG"
+
+      - name: Update ECS service
+        run: |
+          CLUSTER_NAME="ibe-rizzlers-qa-cluster"
+          SERVICE_NAME="ibe-rizzlers-qa-service"
+          
+          # Force new deployment on ECS to pick up the latest image
+          aws ecs update-service --cluster $CLUSTER_NAME --service $SERVICE_NAME --force-new-deployment
+
+      - name: Wait for ECS Service to Stabilize
+        run: |
+          CLUSTER_NAME="ibe-rizzlers-qa-cluster"
+          SERVICE_NAME="ibe-rizzlers-qa-service"
+          
+          # Wait for service to stabilize
+          aws ecs wait services-stable --cluster $CLUSTER_NAME --services $SERVICE_NAME
+
+      - name: Deployment Summary
+        run: |
+          echo "✅ Development Deployment completed successfully"
+          echo "Image: ${{ steps.build-image.outputs.image }}"
+          echo "Deployment time: $(date)" 
