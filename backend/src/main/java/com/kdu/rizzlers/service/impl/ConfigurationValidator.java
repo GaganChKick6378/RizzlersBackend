@@ -569,7 +569,7 @@ public class ConfigurationValidator {
         if (Boolean.TRUE.equals(valueMap.get("enabled"))) {
             if (!valueMap.containsKey("default_size")) {
                 log.warn("Pagination missing required 'default_size' field, adding default");
-                valueMap.put("default_size", 10);
+                valueMap.put("default_size", 3);
             }
             
             if (!valueMap.containsKey("size_options")) {

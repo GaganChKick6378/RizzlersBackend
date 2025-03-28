@@ -87,6 +87,7 @@ public class RoomAvailabilityController {
      *                - propertyId: The property ID to search for
      *                - startDate: Check-in date
      *                - endDate: Check-out date
+     *                - guests: Total number of guests for pricing calculations (overrides sum of individual guest types)
      *                - adults: Number of adult guests (default: 2)
      *                - seniorCitizens: Number of senior citizens (default: 0)
      *                - kids: Number of kids (default: 0)
@@ -99,10 +100,12 @@ public class RoomAvailabilityController {
         
         int totalGuestCount = request.getTotalGuestCount();
         
-        log.info("GET request with body to find available rooms for property: {}, dates: {} to {}, adults: {}, seniors: {}, kids: {}, total guests: {}, rooms: {}", 
+        log.info("GET request with body to find available rooms for property: {}, dates: {} to {}, " +
+                "guests: {}, guestCount: {}, adults: {}, seniors: {}, kids: {}, rooms: {}", 
                 request.getPropertyId(), request.getStartDate(), request.getEndDate(), 
-                request.getAdults(), request.getSeniorCitizens(), request.getKids(),
-                totalGuestCount, request.getRoomCount());
+                request.getGuests(), request.getGuestCount(),
+                request.getAdults(), request.getSeniorCitizens(), request.getKids(), 
+                request.getRoomCount());
         
         List<AvailableRoomDTO> availableRooms = roomAvailabilityService.getAvailableRooms(
                 request.getPropertyId(), 
@@ -121,6 +124,7 @@ public class RoomAvailabilityController {
      *                - propertyId: The property ID to search for
      *                - startDate: Check-in date
      *                - endDate: Check-out date
+     *                - guests: Total number of guests for pricing calculations (overrides sum of individual guest types)
      *                - adults: Number of adult guests (default: 2)
      *                - seniorCitizens: Number of senior citizens (default: 0)
      *                - kids: Number of kids (default: 0)
@@ -135,11 +139,16 @@ public class RoomAvailabilityController {
         
         int totalGuestCount = request.getTotalGuestCount();
         
-        log.info("POST request to find paginated available rooms for property: {}, dates: {} to {}, adults: {}, seniors: {}, kids: {}, total guests: {}, rooms: {}, page: {}, size: {}", 
-                request.getPropertyId(), request.getStartDate(), request.getEndDate(), 
-                request.getAdults(), request.getSeniorCitizens(), request.getKids(),
-                totalGuestCount, request.getRoomCount(), 
-                request.getPage(), request.getSize());
+        log.info("POST request to find paginated available rooms with parameters:");
+        log.info("- Property ID: {}", request.getPropertyId());
+        log.info("- Date Range: {} to {}", request.getStartDate(), request.getEndDate());
+        log.info("- Explicit guests field: {}", request.getGuests());
+        log.info("- Guest count map: {}", request.getGuestCount());
+        log.info("- Legacy fields: adults={}, seniors={}, kids={}", 
+                request.getAdults(), request.getSeniorCitizens(), request.getKids());
+        log.info("- Final total guest count used: {}", totalGuestCount);
+        log.info("- Room count: {}", request.getRoomCount());
+        log.info("- Pagination: page={}, size={}", request.getPage(), request.getSize());
         
         PageResponse<AvailableRoomDTO> pagedRooms = roomAvailabilityService.getAvailableRoomsPaginated(
                 request.getPropertyId(), 
@@ -149,6 +158,8 @@ public class RoomAvailabilityController {
                 request.getRoomCount(),
                 request.getPage(),
                 request.getSize());
+        
+        log.info("Results found: {}", pagedRooms.getTotalElements());
         
         return ResponseEntity.ok(pagedRooms);
     }
