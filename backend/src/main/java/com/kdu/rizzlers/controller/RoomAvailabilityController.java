@@ -129,13 +129,13 @@ public class RoomAvailabilityController {
      *                - size: Size of each page (default: 10)
      * @return Paginated list of available rooms with their details
      */
-    @GetMapping("/available/paged")
+    @PostMapping("/available/paged")
     public ResponseEntity<PageResponse<AvailableRoomDTO>> getAvailableRoomsPaginated(
             @RequestBody RoomAvailabilityRequestDTO request) {
         
         int totalGuestCount = request.getTotalGuestCount();
         
-        log.info("GET request with body to find paginated available rooms for property: {}, dates: {} to {}, adults: {}, seniors: {}, kids: {}, total guests: {}, rooms: {}, page: {}, size: {}", 
+        log.info("POST request to find paginated available rooms for property: {}, dates: {} to {}, adults: {}, seniors: {}, kids: {}, total guests: {}, rooms: {}, page: {}, size: {}", 
                 request.getPropertyId(), request.getStartDate(), request.getEndDate(), 
                 request.getAdults(), request.getSeniorCitizens(), request.getKids(),
                 totalGuestCount, request.getRoomCount(), 
