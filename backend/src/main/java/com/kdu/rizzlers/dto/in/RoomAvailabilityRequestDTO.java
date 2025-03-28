@@ -7,6 +7,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.Map;
 
 @Data
 @Builder
@@ -21,6 +23,19 @@ public class RoomAvailabilityRequestDTO {
     
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate endDate;
+    
+    /**
+     * Total number of guests for pricing and capacity calculation.
+     * This is the primary value used for determining room capacity requirements.
+     * If provided, this overrides the sum of adults, kids, and seniorCitizens.
+     */
+    private Integer guests;
+    
+    /**
+     * Structured breakdown of different guest types
+     */
+    @Builder.Default
+    private Map<String, Integer> guestCount = new HashMap<>();
     
     @Builder.Default
     private Integer adults = 2;
@@ -42,10 +57,25 @@ public class RoomAvailabilityRequestDTO {
     private Integer size = 10;
     
     /**
-     * Calculate the total guest count from adults, senior citizens, and kids
+     * Get the total guest count for pricing and capacity calculations
+     * Prioritizes the explicit guests field if provided
+     * 
      * @return The total number of guests
      */
     public Integer getTotalGuestCount() {
+        // If explicit guests count is provided, use that
+        if (guests != null) {
+            return guests;
+        }
+        
+        // If guestCount map is not empty, sum its values
+        if (guestCount != null && !guestCount.isEmpty()) {
+            return guestCount.values().stream()
+                .mapToInt(Integer::intValue)
+                .sum();
+        }
+        
+        // Otherwise use the legacy fields
         return (adults != null ? adults : 0) + 
                (seniorCitizens != null ? seniorCitizens : 0) + 
                (kids != null ? kids : 0);

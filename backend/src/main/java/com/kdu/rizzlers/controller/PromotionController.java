@@ -38,6 +38,9 @@ public class PromotionController {
      *               - propertyId: The property ID
      *               - startDate: The check-in date
      *               - endDate: The check-out date
+     *               - guests: Total number of guests for pricing calculations (overrides sum of individual guest types)
+     *               - guestCount: Object with guest types and their counts
+     *                 (e.g., {"adult": 2, "kid": 1, "seniorCitizen": 0})
      *               - adults: Number of adult guests (default: 0)
      *               - seniorCitizens: Number of senior citizens (default: 0)
      *               - kids: Number of kids (default: 0)
@@ -50,12 +53,21 @@ public class PromotionController {
     public ResponseEntity<List<PromotionDTO>> getEligiblePromotions(
             @RequestBody CombinedPromotionRequestDTO request) {
         
-        log.info("POST request to find eligible promotions for property: {}, dates: {} to {}, adults: {}, seniors: {}, kids: {}, " +
-                "military: {}, kdu member: {}, upfront payment: {}, length of stay: {}, includes weekend: {}", 
-                request.getPropertyId(), request.getStartDate(), request.getEndDate(), 
-                request.getAdults(), request.getSeniorCitizens(), request.getKids(),
-                request.getIsMilitaryPersonnel(), request.getIsKduMember(), request.getIsUpfrontPayment(),
-                request.getLengthOfStay(), request.includesWeekend());
+        int totalGuestCount = request.getTotalGuestCount();
+        
+        log.info("POST request to find eligible promotions with parameters:");
+        log.info("- Property ID: {}", request.getPropertyId());
+        log.info("- Date Range: {} to {}", request.getStartDate(), request.getEndDate());
+        log.info("- Explicit guests field: {}", request.getGuests());
+        log.info("- Guest count map: {}", request.getGuestCount());
+        log.info("- Legacy fields: adults={}, seniors={}, kids={}", 
+                request.getAdults(), request.getSeniorCitizens(), request.getKids());
+        log.info("- Final total guest count used: {}", totalGuestCount);
+        log.info("- Military personnel: {}", request.getIsMilitaryPersonnel());
+        log.info("- KDU member: {}", request.getIsKduMember());
+        log.info("- Upfront payment: {}", request.getIsUpfrontPayment());
+        log.info("- Length of stay: {}", request.getLengthOfStay());
+        log.info("- Includes weekend: {}", request.includesWeekend());
         
         List<PromotionDTO> eligiblePromotions;
         
@@ -66,6 +78,8 @@ public class PromotionController {
             log.info("Using combined GraphQL and RDS eligible promotions for property: {}", request.getPropertyId());
             eligiblePromotions = promotionService.getEligiblePropertyPromotions(request);
         }
+        
+        log.info("Found {} eligible promotions", eligiblePromotions.size());
         
         return ResponseEntity.ok(eligiblePromotions);
     }

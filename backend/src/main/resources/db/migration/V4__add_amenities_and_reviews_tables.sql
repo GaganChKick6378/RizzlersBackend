@@ -25,6 +25,6 @@ CREATE TABLE IF NOT EXISTS room_type_amenities (
 );
 
 -- Create indexes for better performance
-CREATE INDEX idx_reviews_room_type_id ON reviews(room_type_id);
-CREATE INDEX idx_room_type_amenities_room_type_id ON room_type_amenities(room_type_id);
-CREATE INDEX idx_room_type_amenities_amenity_id ON room_type_amenities(amenity_id); 
+CREATE INDEX IF NOT EXISTS idx_reviews_room_type_id ON reviews(room_type_id);
+CREATE INDEX IF NOT EXISTS idx_room_type_amenities_room_type_id ON room_type_amenities(room_type_id);
+CREATE INDEX IF NOT EXISTS idx_room_type_amenities_amenity_id ON room_type_amenities(amenity_id); 

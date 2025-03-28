@@ -87,6 +87,8 @@ public class RoomAvailabilityServiceImpl implements RoomAvailabilityService {
             
             // Calculate guest capacity per room based on requested rooms and guests
             final int minCapacityPerRoom = (int) Math.ceil((double) guestCount / roomCount);
+            log.info("Calculated minimum capacity per room: {} (based on {} guests / {} rooms)", 
+                    minCapacityPerRoom, guestCount, roomCount);
             
             // Get all rooms for the property
             final List<Map<String, Object>> roomsList = fetchRooms(graphQlClient, propertyId);
@@ -101,7 +103,12 @@ public class RoomAvailabilityServiceImpl implements RoomAvailabilityService {
                 .filter(room -> {
                     final Map<String, Object> roomType = (Map<String, Object>) room.get("room_type");
                     final Integer maxCapacity = (Integer) roomType.get("max_capacity");
-                    return maxCapacity >= minCapacityPerRoom;
+                    boolean hasCapacity = maxCapacity >= minCapacityPerRoom;
+                    if (!hasCapacity) {
+                        log.debug("Room type {} has max capacity {} which is less than required capacity {}", 
+                                roomType.get("room_type_name"), maxCapacity, minCapacityPerRoom);
+                    }
+                    return hasCapacity;
                 })
                 .collect(Collectors.toList());
             
@@ -303,7 +310,7 @@ public class RoomAvailabilityServiceImpl implements RoomAvailabilityService {
             }
         """;
         
-        return graphQlClient.document(roomsQuery)
+        List<Map<String, Object>> rooms = graphQlClient.document(roomsQuery)
             .variable("propertyId", propertyId)
             .retrieve("listRooms")
             .toEntity(new ParameterizedTypeReference<List<Map<String, Object>>>() {})
@@ -312,6 +319,20 @@ public class RoomAvailabilityServiceImpl implements RoomAvailabilityService {
                 return Mono.just(new ArrayList<>());
             })
             .block();
+            
+        if (rooms == null || rooms.isEmpty()) {
+            log.info("No rooms found for property {}", propertyId);
+        } else {
+            log.info("Found {} rooms for property {}", rooms.size(), propertyId);
+            // Log max capacity of each room type for debugging
+            for (Map<String, Object> room : rooms) {
+                Map<String, Object> roomType = (Map<String, Object>) room.get("room_type");
+                log.debug("Room type: {}, max capacity: {}", 
+                        roomType.get("room_type_name"), roomType.get("max_capacity"));
+            }
+        }
+        
+        return rooms;
     }
     
     /**
@@ -371,6 +392,8 @@ public class RoomAvailabilityServiceImpl implements RoomAvailabilityService {
                 return Collections.emptySet();
             }
             
+            log.info("Found {} total availability records for the date range", availabilityList.size());
+            
             // Group by room ID to check if each room is available for the entire period
             Map<Integer, Set<String>> roomAvailabilityDates = new HashMap<>();
             
@@ -396,16 +419,25 @@ public class RoomAvailabilityServiceImpl implements RoomAvailabilityService {
             }
             
             // Log room types and their available rooms count
+            log.info("Room types with potentially available rooms:");
             roomTypeToRooms.forEach((roomTypeName, roomIds) -> {
-                log.info("Room type: {} has {} available rooms", roomTypeName, roomIds.size());
+                log.info("Room type: {} has {} potentially available rooms", roomTypeName, roomIds.size());
             });
             
             // Calculate the expected number of days in the date range
             long totalDays = endDate.toEpochDay() - startDate.toEpochDay() + 1;
+            log.info("Expected availability records per room for full coverage: {}", totalDays);
             
             // Find rooms that are available for the entire period
             final Set<Integer> availableRoomIds = roomAvailabilityDates.entrySet().stream()
-                .filter(entry -> entry.getValue().size() >= totalDays)
+                .filter(entry -> {
+                    boolean isFullyAvailable = entry.getValue().size() >= totalDays;
+                    if (!isFullyAvailable) {
+                        log.debug("Room {} has only {} days available out of {} required days", 
+                                entry.getKey(), entry.getValue().size(), totalDays);
+                    }
+                    return isFullyAvailable;
+                })
                 .map(Map.Entry::getKey)
                 .collect(Collectors.toSet());
                 

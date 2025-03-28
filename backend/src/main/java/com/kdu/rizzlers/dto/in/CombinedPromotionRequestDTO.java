@@ -7,6 +7,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.Map;
 
 @Data
 @Builder
@@ -21,6 +23,18 @@ public class CombinedPromotionRequestDTO {
     
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate endDate;
+    
+    /**
+     * Total number of guests for pricing and promotion calculations.
+     * If provided, this overrides the sum of adults, kids, and seniorCitizens.
+     */
+    private Integer guests;
+    
+    /**
+     * Structured breakdown of different guest types
+     */
+    @Builder.Default
+    private Map<String, Integer> guestCount = new HashMap<>();
     
     @Builder.Default
     private Integer adults = 0;
@@ -113,6 +127,31 @@ public class CombinedPromotionRequestDTO {
     }
     
     /**
+     * Get the total guest count for promotion calculations
+     * Prioritizes the explicit guests field if provided
+     * 
+     * @return The total number of guests
+     */
+    public Integer getTotalGuestCount() {
+        // If explicit guests count is provided, use that
+        if (guests != null) {
+            return guests;
+        }
+        
+        // If guestCount map is not empty, sum its values
+        if (guestCount != null && !guestCount.isEmpty()) {
+            return guestCount.values().stream()
+                .mapToInt(Integer::intValue)
+                .sum();
+        }
+        
+        // Otherwise use the legacy fields
+        return (adults != null ? adults : 0) + 
+               (seniorCitizens != null ? seniorCitizens : 0) + 
+               (kids != null ? kids : 0);
+    }
+    
+    /**
      * Convert this combined request to a PromotionEligibilityRequestDTO
      * @return A new PromotionEligibilityRequestDTO with the eligibility fields from this request
      */
@@ -120,6 +159,8 @@ public class CombinedPromotionRequestDTO {
         return PromotionEligibilityRequestDTO.builder()
                 .startDate(this.startDate)
                 .endDate(this.endDate)
+                .guests(this.guests)
+                .guestCount(this.guestCount)
                 .adults(this.adults)
                 .seniorCitizens(this.seniorCitizens)
                 .kids(this.kids)
