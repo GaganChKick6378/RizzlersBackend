@@ -46,11 +46,11 @@ public class PromotionController {
      *               - isUpfrontPayment: Whether the guest is making full payment upfront (default: false)
      * @return List of eligible promotions
      */
-    @GetMapping("/eligible")
+    @PostMapping("/eligible")
     public ResponseEntity<List<PromotionDTO>> getEligiblePromotions(
             @RequestBody CombinedPromotionRequestDTO request) {
         
-        log.info("Request to find eligible promotions for property: {}, dates: {} to {}, adults: {}, seniors: {}, kids: {}, " +
+        log.info("POST request to find eligible promotions for property: {}, dates: {} to {}, adults: {}, seniors: {}, kids: {}, " +
                 "military: {}, kdu member: {}, upfront payment: {}, length of stay: {}, includes weekend: {}", 
                 request.getPropertyId(), request.getStartDate(), request.getEndDate(), 
                 request.getAdults(), request.getSeniorCitizens(), request.getKids(),

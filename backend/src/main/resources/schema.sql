@@ -71,27 +71,7 @@ CREATE TABLE IF NOT EXISTS guest_type_definition (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE TABLE amenities (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL
-);
-CREATE TABLE reviews (
-    id SERIAL PRIMARY KEY,
-    room_type_id INTEGER NOT NULL,
-    rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
-    description TEXT NOT NULL,
-    images TEXT[] NOT NULL DEFAULT '{}',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    review_count INTEGER NOT NULL DEFAULT 0
-);
 
-CREATE TABLE room_type_amenities (
-    id SERIAL PRIMARY KEY,
-    room_type_id INTEGER NOT NULL,
-    amenity_id INTEGER NOT NULL,
-    FOREIGN KEY (amenity_id) REFERENCES amenities(id),
-    UNIQUE (room_type_id, amenity_id)
-);
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_tenant_configuration_tenant_id ON tenant_configuration(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_tenant_configuration_page ON tenant_configuration(page);
@@ -111,7 +91,3 @@ CREATE INDEX IF NOT EXISTS idx_room_type_images_property_id ON room_type_images(
 
 CREATE INDEX IF NOT EXISTS idx_guest_type_tenant_id ON guest_type_definition(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_guest_type_is_active ON guest_type_definition(is_active);
-
-CREATE INDEX idx_reviews_room_type_id ON reviews(room_type_id);
-CREATE INDEX idx_room_type_amenities_room_type_id ON room_type_amenities(room_type_id);
-CREATE INDEX idx_room_type_amenities_amenity_id ON room_type_amenities(amenity_id);
