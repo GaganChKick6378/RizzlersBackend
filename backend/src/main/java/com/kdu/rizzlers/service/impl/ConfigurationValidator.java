@@ -368,4 +368,265 @@ public class ConfigurationValidator {
         
         return valid;
     }
+    
+    /**
+     * Validates filters configuration
+     */
+    public boolean validateFilters(Map<String, Object> valueMap) {
+        if (!valueMap.containsKey("enabled")) {
+            log.warn("Filters missing required 'enabled' field, adding default");
+            valueMap.put("enabled", true);
+        }
+        
+        if (!valueMap.containsKey("position")) {
+            log.warn("Filters missing 'position' field, adding default");
+            valueMap.put("position", "left");
+        }
+        
+        // Check for sections if enabled is true
+        if (Boolean.TRUE.equals(valueMap.get("enabled"))) {
+            if (!valueMap.containsKey("sections")) {
+                log.warn("Filters missing required 'sections' field");
+                return false;
+            }
+            
+            // Validate sections is a list
+            Object sectionsObj = valueMap.get("sections");
+            if (!(sectionsObj instanceof List)) {
+                log.warn("Filters 'sections' field is not an array");
+                return false;
+            }
+            
+            @SuppressWarnings("unchecked")
+            List<Object> sections = (List<Object>) sectionsObj;
+            
+            // Validate each filter section
+            for (Object section : sections) {
+                if (!(section instanceof Map)) {
+                    log.warn("Filter section is not an object");
+                    continue;
+                }
+                
+                @SuppressWarnings("unchecked")
+                Map<String, Object> sectionMap = (Map<String, Object>) section;
+                
+                if (!sectionMap.containsKey("id") || !sectionMap.containsKey("type") || !sectionMap.containsKey("label")) {
+                    log.warn("Filter section missing required 'id', 'type', or 'label' field");
+                    continue;
+                }
+                
+                if (!sectionMap.containsKey("enabled")) {
+                    log.warn("Filter section missing 'enabled' field, setting to true by default");
+                    sectionMap.put("enabled", true);
+                }
+                
+                // Validate options based on filter type
+                String type = sectionMap.get("type").toString();
+                if ("range".equals(type)) {
+                    validateRangeFilterOptions(sectionMap);
+                } else if ("checkbox".equals(type)) {
+                    validateCheckboxFilterOptions(sectionMap);
+                }
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Validates range filter options
+     */
+    private void validateRangeFilterOptions(Map<String, Object> sectionMap) {
+        if (!sectionMap.containsKey("options")) {
+            log.warn("Range filter missing 'options' field");
+            Map<String, Object> defaultOptions = Map.of("min", 0, "max", 1000, "step", 10);
+            sectionMap.put("options", defaultOptions);
+            return;
+        }
+        
+        Object optionsObj = sectionMap.get("options");
+        if (!(optionsObj instanceof Map)) {
+            log.warn("Range filter 'options' field is not an object");
+            Map<String, Object> defaultOptions = Map.of("min", 0, "max", 1000, "step", 10);
+            sectionMap.put("options", defaultOptions);
+            return;
+        }
+        
+        @SuppressWarnings("unchecked")
+        Map<String, Object> optionsMap = (Map<String, Object>) optionsObj;
+        
+        if (!optionsMap.containsKey("min")) {
+            log.warn("Range filter options missing 'min' field, adding default");
+            optionsMap.put("min", 0);
+        }
+        
+        if (!optionsMap.containsKey("max")) {
+            log.warn("Range filter options missing 'max' field, adding default");
+            optionsMap.put("max", 1000);
+        }
+        
+        if (!optionsMap.containsKey("step")) {
+            log.warn("Range filter options missing 'step' field, adding default");
+            optionsMap.put("step", 10);
+        }
+    }
+    
+    /**
+     * Validates checkbox filter options
+     */
+    private void validateCheckboxFilterOptions(Map<String, Object> sectionMap) {
+        if (!sectionMap.containsKey("options")) {
+            log.warn("Checkbox filter missing 'options' field");
+            sectionMap.put("options", Collections.emptyList());
+            return;
+        }
+        
+        Object optionsObj = sectionMap.get("options");
+        if (!(optionsObj instanceof List)) {
+            log.warn("Checkbox filter 'options' field is not an array");
+            sectionMap.put("options", Collections.emptyList());
+            return;
+        }
+        
+        @SuppressWarnings("unchecked")
+        List<Object> options = (List<Object>) optionsObj;
+        
+        for (Object option : options) {
+            if (!(option instanceof Map)) {
+                log.warn("Checkbox option is not an object");
+                continue;
+            }
+            
+            @SuppressWarnings("unchecked")
+            Map<String, Object> optionMap = (Map<String, Object>) option;
+            
+            if (!optionMap.containsKey("id") || !optionMap.containsKey("label")) {
+                log.warn("Checkbox option missing required 'id' or 'label' field");
+            }
+        }
+    }
+    
+    /**
+     * Validates sorting configuration
+     */
+    public boolean validateSorting(Map<String, Object> valueMap) {
+        if (!valueMap.containsKey("enabled")) {
+            log.warn("Sorting missing required 'enabled' field, adding default");
+            valueMap.put("enabled", true);
+        }
+        
+        // Check for required fields if enabled is true
+        if (Boolean.TRUE.equals(valueMap.get("enabled"))) {
+            if (!valueMap.containsKey("default")) {
+                log.warn("Sorting missing required 'default' field");
+                valueMap.put("default", "price_low_high");
+            }
+            
+            if (!valueMap.containsKey("options")) {
+                log.warn("Sorting missing required 'options' field");
+                return false;
+            }
+            
+            // Validate options is a list
+            Object optionsObj = valueMap.get("options");
+            if (!(optionsObj instanceof List)) {
+                log.warn("Sorting 'options' field is not an array");
+                return false;
+            }
+            
+            @SuppressWarnings("unchecked")
+            List<Object> options = (List<Object>) optionsObj;
+            
+            // Validate sorting options
+            for (Object option : options) {
+                if (!(option instanceof Map)) {
+                    log.warn("Sorting option is not an object");
+                    continue;
+                }
+                
+                @SuppressWarnings("unchecked")
+                Map<String, Object> optionMap = (Map<String, Object>) option;
+                
+                if (!optionMap.containsKey("id") || !optionMap.containsKey("label")) {
+                    log.warn("Sorting option missing required 'id' or 'label' field");
+                }
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Validates pagination configuration
+     */
+    public boolean validatePagination(Map<String, Object> valueMap) {
+        if (!valueMap.containsKey("enabled")) {
+            log.warn("Pagination missing required 'enabled' field, adding default");
+            valueMap.put("enabled", true);
+        }
+        
+        // Check for required fields if enabled is true
+        if (Boolean.TRUE.equals(valueMap.get("enabled"))) {
+            if (!valueMap.containsKey("default_size")) {
+                log.warn("Pagination missing required 'default_size' field, adding default");
+                valueMap.put("default_size", 10);
+            }
+            
+            if (!valueMap.containsKey("size_options")) {
+                log.warn("Pagination missing required 'size_options' field, adding default");
+                valueMap.put("size_options", List.of(5, 10, 20, 50));
+            } else {
+                // Validate size_options is a list
+                Object sizeOptionsObj = valueMap.get("size_options");
+                if (!(sizeOptionsObj instanceof List)) {
+                    log.warn("Pagination 'size_options' field is not an array, adding default");
+                    valueMap.put("size_options", List.of(5, 10, 20, 50));
+                }
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Validates display options configuration
+     */
+    public boolean validateDisplayOptions(Map<String, Object> valueMap) {
+        // Layout validation
+        if (!valueMap.containsKey("layout")) {
+            log.warn("Display options missing required 'layout' field, adding default");
+            valueMap.put("layout", "grid");
+        }
+        
+        // Image gallery validation
+        if (!valueMap.containsKey("show_image_gallery")) {
+            log.warn("Display options missing 'show_image_gallery' field, adding default");
+            valueMap.put("show_image_gallery", true);
+        }
+        
+        // Ratings validation
+        if (!valueMap.containsKey("show_ratings")) {
+            log.warn("Display options missing 'show_ratings' field, adding default");
+            valueMap.put("show_ratings", true);
+        }
+        
+        // Amenities validation
+        if (!valueMap.containsKey("show_amenities")) {
+            log.warn("Display options missing 'show_amenities' field, adding default");
+            valueMap.put("show_amenities", true);
+        }
+        
+        if (!valueMap.containsKey("max_amenities_shown")) {
+            log.warn("Display options missing 'max_amenities_shown' field, adding default");
+            valueMap.put("max_amenities_shown", 3);
+        }
+        
+        // Description validation
+        if (!valueMap.containsKey("show_description")) {
+            log.warn("Display options missing 'show_description' field, adding default");
+            valueMap.put("show_description", true);
+        }
+        
+        return true;
+    }
 } 

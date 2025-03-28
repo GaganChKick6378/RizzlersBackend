@@ -2,6 +2,7 @@ package com.kdu.rizzlers.service;
 
 import com.kdu.rizzlers.dto.in.TenantConfigurationRequest;
 import com.kdu.rizzlers.dto.out.LandingPageConfigResponse;
+import com.kdu.rizzlers.dto.out.ResultsPageConfigResponse;
 import com.kdu.rizzlers.dto.out.TenantConfigurationResponse;
 
 import java.util.List;
@@ -27,4 +28,21 @@ public interface TenantConfigurationService {
      * @return Landing page configuration response
      */
     LandingPageConfigResponse getLandingPageConfiguration(Integer tenantId, boolean fetchPropertyDetails);
+    
+    /**
+     * Get results page configuration for a specific tenant
+     *
+     * @param tenantId The tenant ID
+     * @return Results page configuration response
+     */
+    ResultsPageConfigResponse getResultsPageConfiguration(Integer tenantId);
+    
+    /**
+     * Get results page configuration for a specific tenant
+     *
+     * @param tenantId The tenant ID
+     * @param fetchPropertyDetails Whether to fetch property details from GraphQL service
+     * @return Results page configuration response
+     */
+    ResultsPageConfigResponse getResultsPageConfiguration(Integer tenantId, boolean fetchPropertyDetails);
 } 
