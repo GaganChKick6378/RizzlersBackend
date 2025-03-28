@@ -2,6 +2,7 @@ package com.kdu.rizzlers.controller;
 
 import com.kdu.rizzlers.dto.in.TenantConfigurationRequest;
 import com.kdu.rizzlers.dto.out.LandingPageConfigResponse;
+import com.kdu.rizzlers.dto.out.ResultsPageConfigResponse;
 import com.kdu.rizzlers.dto.out.TenantConfigurationResponse;
 import com.kdu.rizzlers.service.TenantConfigurationService;
 import jakarta.validation.Valid;
@@ -10,7 +11,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/tenant-configurations")
@@ -63,6 +66,37 @@ public class TenantConfigurationController {
         
         LandingPageConfigResponse config = tenantConfigurationService.getLandingPageConfiguration(tenantId, fetchPropertyDetails);
         return ResponseEntity.ok(config);
+    }
+
+    @GetMapping("/tenant/{tenantId}/results")
+    public ResponseEntity<Map<String, Object>> getResultsPageConfiguration(@PathVariable Integer tenantId) {
+        ResultsPageConfigResponse fullConfig = tenantConfigurationService.getResultsPageConfiguration(tenantId);
+        
+        // Extract only the configuration fields requested
+        Map<String, Object> configOnly = new HashMap<>();
+        configOnly.put("filters", fullConfig.getFilters());
+        configOnly.put("sorting", fullConfig.getSorting());
+        configOnly.put("pagination", fullConfig.getPagination());
+        configOnly.put("displayOptions", fullConfig.getDisplayOptions());
+        
+        return ResponseEntity.ok(configOnly);
+    }
+
+    @GetMapping("/tenant/{tenantId}/results/basic")
+    public ResponseEntity<Map<String, Object>> getBasicResultsPageConfiguration(
+            @PathVariable Integer tenantId,
+            @RequestParam(value = "fetch_property_details", defaultValue = "false") boolean fetchPropertyDetails) {
+        
+        ResultsPageConfigResponse fullConfig = tenantConfigurationService.getResultsPageConfiguration(tenantId, fetchPropertyDetails);
+        
+        // Extract only the configuration fields requested
+        Map<String, Object> configOnly = new HashMap<>();
+        configOnly.put("filters", fullConfig.getFilters());
+        configOnly.put("sorting", fullConfig.getSorting());
+        configOnly.put("pagination", fullConfig.getPagination());
+        configOnly.put("displayOptions", fullConfig.getDisplayOptions());
+        
+        return ResponseEntity.ok(configOnly);
     }
 
     @PutMapping("/{id}")

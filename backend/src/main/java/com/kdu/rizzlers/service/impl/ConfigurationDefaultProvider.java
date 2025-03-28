@@ -1,6 +1,7 @@
 package com.kdu.rizzlers.service.impl;
 
 import com.kdu.rizzlers.dto.out.LandingPageConfigResponse;
+import com.kdu.rizzlers.dto.out.ResultsPageConfigResponse;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -102,5 +103,96 @@ public class ConfigurationDefaultProvider {
         defaultNumberOfRooms.put("max", 3);
         defaultNumberOfRooms.put("value", 1);
         builder.numberOfRooms(defaultNumberOfRooms);
+    }
+
+    /**
+     * Sets default values for results page configuration fields to ensure the response never has null values
+     *
+     * @param builder The response builder to set defaults on
+     */
+    public void setResultsPageDefaultValues(ResultsPageConfigResponse.ResultsPageConfigResponseBuilder builder) {
+        // Default filters
+        Map<String, Object> defaultFilters = new HashMap<>();
+        defaultFilters.put("enabled", true);
+        defaultFilters.put("position", "left");
+        
+        // Default filter sections
+        List<Map<String, Object>> defaultSections = new ArrayList<>();
+        
+        // Price range filter
+        Map<String, Object> priceFilter = new HashMap<>();
+        priceFilter.put("id", "price");
+        priceFilter.put("type", "range");
+        priceFilter.put("label", "Price Range");
+        priceFilter.put("enabled", true);
+        Map<String, Object> priceOptions = new HashMap<>();
+        priceOptions.put("min", 0);
+        priceOptions.put("max", 1000);
+        priceOptions.put("step", 10);
+        priceFilter.put("options", priceOptions);
+        defaultSections.add(priceFilter);
+        
+        // Amenities filter
+        Map<String, Object> amenitiesFilter = new HashMap<>();
+        amenitiesFilter.put("id", "amenities");
+        amenitiesFilter.put("type", "checkbox");
+        amenitiesFilter.put("label", "Amenities");
+        amenitiesFilter.put("enabled", true);
+        List<Map<String, Object>> amenityOptions = new ArrayList<>();
+        Map<String, Object> wifiOption = new HashMap<>();
+        wifiOption.put("id", "wifi");
+        wifiOption.put("label", "WiFi");
+        amenityOptions.add(wifiOption);
+        Map<String, Object> poolOption = new HashMap<>();
+        poolOption.put("id", "pool");
+        poolOption.put("label", "Swimming Pool");
+        amenityOptions.add(poolOption);
+        amenitiesFilter.put("options", amenityOptions);
+        defaultSections.add(amenitiesFilter);
+        
+        defaultFilters.put("sections", defaultSections);
+        builder.filters(defaultFilters);
+        
+        // Default sorting
+        Map<String, Object> defaultSorting = new HashMap<>();
+        defaultSorting.put("enabled", true);
+        defaultSorting.put("default", "price_low_high");
+        List<Map<String, Object>> sortOptions = new ArrayList<>();
+        
+        Map<String, Object> priceLowHighSort = new HashMap<>();
+        priceLowHighSort.put("id", "price_low_high");
+        priceLowHighSort.put("label", "Price: Low to High");
+        sortOptions.add(priceLowHighSort);
+        
+        Map<String, Object> priceHighLowSort = new HashMap<>();
+        priceHighLowSort.put("id", "price_high_low");
+        priceHighLowSort.put("label", "Price: High to Low");
+        sortOptions.add(priceHighLowSort);
+        
+        Map<String, Object> ratingSort = new HashMap<>();
+        ratingSort.put("id", "rating");
+        ratingSort.put("label", "Rating");
+        sortOptions.add(ratingSort);
+        
+        defaultSorting.put("options", sortOptions);
+        builder.sorting(defaultSorting);
+        
+        // Default pagination
+        Map<String, Object> defaultPagination = new HashMap<>();
+        defaultPagination.put("enabled", true);
+        defaultPagination.put("default_size", 10);
+        List<Integer> pageSizeOptions = Arrays.asList(5, 10, 20, 50);
+        defaultPagination.put("size_options", pageSizeOptions);
+        builder.pagination(defaultPagination);
+        
+        // Default display options
+        Map<String, Object> defaultDisplayOptions = new HashMap<>();
+        defaultDisplayOptions.put("layout", "grid");
+        defaultDisplayOptions.put("show_image_gallery", true);
+        defaultDisplayOptions.put("show_ratings", true);
+        defaultDisplayOptions.put("show_amenities", true);
+        defaultDisplayOptions.put("max_amenities_shown", 3);
+        defaultDisplayOptions.put("show_description", true);
+        builder.displayOptions(defaultDisplayOptions);
     }
 } 
