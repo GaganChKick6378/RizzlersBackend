@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit;
 @Configuration
 public class WebClientConfig {
 
-    @Value("${graphql.timeout:10000}")
+    @Value("${graphql.timeout:30000}")
     private int timeout;
 
     @Bean
