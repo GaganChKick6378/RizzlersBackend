@@ -16,9 +16,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -28,9 +25,6 @@ public class PromotionServiceImpl implements PromotionService {
 
     private final PromotionGraphQLService promotionGraphQLService;
     private final PropertyPromotionRepository propertyPromotionRepository;
-    
-    // Create a thread pool for concurrent execution
-    private final ExecutorService executorService = Executors.newFixedThreadPool(2);
 
     @Override
     public List<PromotionDTO> getAllPromotions() {
@@ -57,115 +51,91 @@ public class PromotionServiceImpl implements PromotionService {
         log.info("Fetching combined promotions for property: {}, date range: {} to {}", 
                 propertyId, startDate, endDate);
         
-        // Use CompletableFuture to fetch data from both sources concurrently
-        CompletableFuture<List<PromotionDTO>> graphQlPromotionsFuture = CompletableFuture
-                .supplyAsync(this::getAllPromotions, executorService);
+        // Fetch data sequentially - first GraphQL
+        List<PromotionDTO> graphQlPromotions = getAllPromotions();
         
-        CompletableFuture<List<PropertyPromotion>> dbPromotionsFuture = CompletableFuture
-                .supplyAsync(() -> {
-                    List<PropertyPromotion> dbPromotions = propertyPromotionRepository
-                            .findActiveAndVisiblePromotionsForPropertyInDateRange(propertyId, startDate, endDate);
-                    log.info("Found {} property-specific promotions in database for property: {}, date range: {} to {}", 
-                            dbPromotions.size(), propertyId, startDate, endDate);
-                    return dbPromotions;
-                }, executorService);
+        // Then database
+        List<PropertyPromotion> dbPromotions = propertyPromotionRepository
+                .findActiveAndVisiblePromotionsForPropertyInDateRange(propertyId, startDate, endDate);
+        log.info("Found {} property-specific promotions in database for property: {}, date range: {} to {}", 
+                dbPromotions.size(), propertyId, startDate, endDate);
         
-        // Wait for both futures to complete
-        CompletableFuture<List<PromotionDTO>> combinedFuture = graphQlPromotionsFuture
-                .thenCombine(dbPromotionsFuture, (graphQlPromotions, dbPromotions) -> {
-                    Set<Integer> promotionIds = new HashSet<>();
-                    List<PromotionDTO> result = new ArrayList<>();
-                    
-                    // Add GraphQL promotions first (they might be overridden by DB promotions)
-                    log.info("Adding active GraphQL promotions");
-                    graphQlPromotions.stream()
-                        .filter(promotion -> !promotion.getIsDeactivated())
-                        .forEach(promotion -> {
-                            result.add(promotion);
-                            promotionIds.add(promotion.getPromotionId());
-                            log.debug("Added GraphQL promotion: {}", promotion.getPromotionId());
-                        });
-                    
-                    // Add DB promotions, potentially overriding GraphQL ones with same ID
-                    // Note: dbPromotions are already filtered for isActive=true AND isVisible=true at the repository level
-                    log.info("Adding database promotions (already filtered for isActive=true AND isVisible=true)");
-                    for (PropertyPromotion dbPromotion : dbPromotions) {
-                        PromotionDTO promotionDTO = dbPromotion.toDTO().toPromotionDTO();
-                        
-                        // Either add new promotion or replace existing one
-                        if (promotionIds.contains(promotionDTO.getPromotionId())) {
-                            // Replace the existing promotion
-                            log.debug("Replacing existing promotion with ID: {}", promotionDTO.getPromotionId());
-                            result.removeIf(p -> p.getPromotionId().equals(promotionDTO.getPromotionId()));
-                        }
-                        
-                        result.add(promotionDTO);
-                        promotionIds.add(promotionDTO.getPromotionId());
-                        log.debug("Added database promotion: {}", promotionDTO.getPromotionId());
-                    }
-                    
-                    log.info("Combined {} promotions in total", result.size());
-                    return result;
-                });
+        // Combine the results
+        Set<Integer> promotionIds = new HashSet<>();
+        List<PromotionDTO> result = new ArrayList<>();
         
-        try {
-            return combinedFuture.get();
-        } catch (Exception e) {
-            log.error("Error fetching combined promotions for property", e);
-            return new ArrayList<>();
+        // Add GraphQL promotions first (they might be overridden by DB promotions)
+        log.info("Adding active GraphQL promotions");
+        graphQlPromotions.stream()
+            .filter(promotion -> !promotion.getIsDeactivated())
+            .forEach(promotion -> {
+                result.add(promotion);
+                promotionIds.add(promotion.getPromotionId());
+                log.debug("Added GraphQL promotion: {}", promotion.getPromotionId());
+            });
+        
+        // Add DB promotions, potentially overriding GraphQL ones with same ID
+        // Note: dbPromotions are already filtered for isActive=true AND isVisible=true at the repository level
+        log.info("Adding database promotions (already filtered for isActive=true AND isVisible=true)");
+        for (PropertyPromotion dbPromotion : dbPromotions) {
+            PromotionDTO promotionDTO = dbPromotion.toDTO().toPromotionDTO();
+            
+            // Either add new promotion or replace existing one
+            if (promotionIds.contains(promotionDTO.getPromotionId())) {
+                // Replace the existing promotion
+                log.debug("Replacing existing promotion with ID: {}", promotionDTO.getPromotionId());
+                result.removeIf(p -> p.getPromotionId().equals(promotionDTO.getPromotionId()));
+            }
+            
+            result.add(promotionDTO);
+            promotionIds.add(promotionDTO.getPromotionId());
+            log.debug("Added database promotion: {}", promotionDTO.getPromotionId());
         }
+        
+        log.info("Combined {} promotions in total", result.size());
+        return result;
     }
     
     @Override
     @Deprecated
     public List<PromotionDTO> getCombinedPromotions(LocalDate startDate, LocalDate endDate) {
         log.warn("Using deprecated method. Please use getCombinedPromotionsForProperty instead.");
-        // Use CompletableFuture to fetch data from both sources concurrently
-        CompletableFuture<List<PromotionDTO>> graphQlPromotionsFuture = CompletableFuture
-                .supplyAsync(this::getAllPromotions, executorService);
         
-        CompletableFuture<List<PropertyPromotion>> dbPromotionsFuture = CompletableFuture
-                .supplyAsync(() -> propertyPromotionRepository.findActiveAndVisiblePromotionsInDateRange(startDate, endDate), 
-                        executorService);
+        // Fetch data sequentially - first GraphQL
+        List<PromotionDTO> graphQlPromotions = getAllPromotions();
         
-        // Wait for both futures to complete
-        CompletableFuture<List<PromotionDTO>> combinedFuture = graphQlPromotionsFuture
-                .thenCombine(dbPromotionsFuture, (graphQlPromotions, dbPromotions) -> {
-                    Set<Integer> promotionIds = new HashSet<>();
-                    List<PromotionDTO> result = new ArrayList<>();
-                    
-                    // Add GraphQL promotions first (they might be overridden by DB promotions)
-                    graphQlPromotions.stream()
-                        .filter(promotion -> !promotion.getIsDeactivated())
-                        .forEach(promotion -> {
-                            result.add(promotion);
-                            promotionIds.add(promotion.getPromotionId());
-                        });
-                    
-                    // Add DB promotions, potentially overriding GraphQL ones with same ID
-                    // Note: dbPromotions are already filtered for isActive=true AND isVisible=true at the repository level
-                    for (PropertyPromotion dbPromotion : dbPromotions) {
-                        PromotionDTO promotionDTO = dbPromotion.toDTO().toPromotionDTO();
-                        
-                        // Either add new promotion or replace existing one
-                        if (promotionIds.contains(promotionDTO.getPromotionId())) {
-                            // Replace the existing promotion
-                            result.removeIf(p -> p.getPromotionId().equals(promotionDTO.getPromotionId()));
-                        }
-                        
-                        result.add(promotionDTO);
-                        promotionIds.add(promotionDTO.getPromotionId());
-                    }
-                    
-                    return result;
-                });
+        // Then database
+        List<PropertyPromotion> dbPromotions = propertyPromotionRepository
+                .findActiveAndVisiblePromotionsInDateRange(startDate, endDate);
         
-        try {
-            return combinedFuture.get();
-        } catch (Exception e) {
-            log.error("Error fetching combined promotions", e);
-            return new ArrayList<>();
+        // Combine the results
+        Set<Integer> promotionIds = new HashSet<>();
+        List<PromotionDTO> result = new ArrayList<>();
+        
+        // Add GraphQL promotions first (they might be overridden by DB promotions)
+        graphQlPromotions.stream()
+            .filter(promotion -> !promotion.getIsDeactivated())
+            .forEach(promotion -> {
+                result.add(promotion);
+                promotionIds.add(promotion.getPromotionId());
+            });
+        
+        // Add DB promotions, potentially overriding GraphQL ones with same ID
+        // Note: dbPromotions are already filtered for isActive=true AND isVisible=true at the repository level
+        for (PropertyPromotion dbPromotion : dbPromotions) {
+            PromotionDTO promotionDTO = dbPromotion.toDTO().toPromotionDTO();
+            
+            // Either add new promotion or replace existing one
+            if (promotionIds.contains(promotionDTO.getPromotionId())) {
+                // Replace the existing promotion
+                result.removeIf(p -> p.getPromotionId().equals(promotionDTO.getPromotionId()));
+            }
+            
+            result.add(promotionDTO);
+            promotionIds.add(promotionDTO.getPromotionId());
         }
+        
+        return result;
     }
     
     @Override
@@ -176,30 +146,20 @@ public class PromotionServiceImpl implements PromotionService {
                 request.getAdults(), request.getSeniorCitizens(), request.getKids(),
                 request.getIsMilitaryPersonnel(), request.getIsKduMember(), request.getIsUpfrontPayment());
         
-        // Step 1: Get combined promotions for the property (GraphQL + database)
-        CompletableFuture<List<PromotionDTO>> combinedPromotionsFuture = CompletableFuture
-                .supplyAsync(() -> getCombinedPromotionsForProperty(
-                    request.getPropertyId(), request.getStartDate(), request.getEndDate()), 
-                    executorService);
+        // Get combined promotions for the property (GraphQL + database)
+        List<PromotionDTO> combinedPromotions = getCombinedPromotionsForProperty(
+                request.getPropertyId(), request.getStartDate(), request.getEndDate());
         
-        try {
-            // Get the combined promotions
-            List<PromotionDTO> combinedPromotions = combinedPromotionsFuture.get();
-            log.info("Retrieved {} combined promotions before eligibility filtering", combinedPromotions.size());
-            
-            // Step 2: Filter the combined promotions by eligibility criteria
-            List<PromotionDTO> eligiblePromotions = combinedPromotions.stream()
-                    .filter(promotion -> !promotion.getIsDeactivated())
-                    .filter(promotion -> isEligibleForPromotion(promotion, request))
-                    .collect(Collectors.toList());
-            
-            log.info("Filtered down to {} eligible promotions", eligiblePromotions.size());
-            return eligiblePromotions;
-            
-        } catch (Exception e) {
-            log.error("Error fetching eligible property promotions", e);
-            return new ArrayList<>();
-        }
+        log.info("Retrieved {} combined promotions before eligibility filtering", combinedPromotions.size());
+        
+        // Filter the combined promotions by eligibility criteria
+        List<PromotionDTO> eligiblePromotions = combinedPromotions.stream()
+                .filter(promotion -> !promotion.getIsDeactivated())
+                .filter(promotion -> isEligibleForPromotion(promotion, request))
+                .collect(Collectors.toList());
+        
+        log.info("Filtered down to {} eligible promotions", eligiblePromotions.size());
+        return eligiblePromotions;
     }
     
     private boolean isEligibleForPromotion(PromotionDTO promotion, PromotionEligibilityRequestDTO request) {
