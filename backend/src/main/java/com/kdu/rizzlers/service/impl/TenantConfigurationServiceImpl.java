@@ -352,6 +352,12 @@ public class TenantConfigurationServiceImpl implements TenantConfigurationServic
         switch (field) {
             case "filters":
                 if (configValidator.validateFilters(valueMap)) {
+                    // Handle the case where we have a 'show' property but no 'enabled' property
+                    if (valueMap.containsKey("show") && !valueMap.containsKey("enabled")) {
+                        // Copy the 'show' value to 'enabled' for backwards compatibility
+                        valueMap.put("enabled", valueMap.get("show"));
+                        log.info("Mapping 'show: {}' to 'enabled' for filters", valueMap.get("show"));
+                    }
                     builder.filters(valueMap);
                 }
                 break;

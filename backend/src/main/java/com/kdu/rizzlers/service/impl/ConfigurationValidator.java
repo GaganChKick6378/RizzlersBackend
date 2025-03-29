@@ -373,9 +373,16 @@ public class ConfigurationValidator {
      * Validates filters configuration
      */
     public boolean validateFilters(Map<String, Object> valueMap) {
+        // Check if we have a 'show' value, and use it for 'enabled' if we don't have an 'enabled' value
         if (!valueMap.containsKey("enabled")) {
-            log.warn("Filters missing required 'enabled' field, adding default");
-            valueMap.put("enabled", true);
+            if (valueMap.containsKey("show")) {
+                // Use the show value as the enabled value for backward compatibility
+                valueMap.put("enabled", valueMap.get("show"));
+                log.info("Setting 'enabled' to {} based on 'show' value", valueMap.get("show"));
+            } else {
+                log.warn("Filters missing both 'enabled' and 'show' fields, adding default");
+                valueMap.put("enabled", true);
+            }
         }
         
         if (!valueMap.containsKey("position")) {

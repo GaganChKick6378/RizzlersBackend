@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Comparator;
 
 @Slf4j
 @RestController
@@ -139,6 +141,10 @@ public class RoomAvailabilityController {
         
         int totalGuestCount = request.getTotalGuestCount();
         
+        // Get the raw page and size values directly from the request
+        final int requestedPageNumber = request.getPage() != null ? request.getPage() : 0;
+        final int requestedPageSize = request.getSize() != null ? request.getSize() : 10;
+        
         log.info("POST request to find paginated available rooms with parameters:");
         log.info("- Property ID: {}", request.getPropertyId());
         log.info("- Date Range: {} to {}", request.getStartDate(), request.getEndDate());
@@ -148,19 +154,79 @@ public class RoomAvailabilityController {
                 request.getAdults(), request.getSeniorCitizens(), request.getKids());
         log.info("- Final total guest count used: {}", totalGuestCount);
         log.info("- Room count: {}", request.getRoomCount());
-        log.info("- Pagination: page={}, size={}", request.getPage(), request.getSize());
         
-        PageResponse<AvailableRoomDTO> pagedRooms = roomAvailabilityService.getAvailableRoomsPaginated(
-                request.getPropertyId(), 
-                request.getStartDate(), 
-                request.getEndDate(), 
-                totalGuestCount, 
-                request.getRoomCount(),
-                request.getPage(),
-                request.getSize());
+        // Explicitly log the raw pagination values from the request
+        log.info("- Raw pagination values - page: {}, size: {}", request.getPage(), request.getSize());
+        log.info("- Raw pagination object: {}", request.getPagination());
+        log.info("- Directly accessed pagination values - page: {}, size: {}", requestedPageNumber, requestedPageSize);
         
-        log.info("Results found: {}", pagedRooms.getTotalElements());
+        PageResponse<AvailableRoomDTO> pagedRooms;
         
-        return ResponseEntity.ok(pagedRooms);
+        // Check if filters are provided
+        if (request.getFilters() != null) {
+            log.info("- Filters: roomTypes={}, ratings={}, amenities={}, priceRange={}, sort={}",
+                    request.getFilters().getRoomType(),
+                    request.getFilters().getRatings(),
+                    request.getFilters().getAmenities(),
+                    request.getFilters().getPriceRange(),
+                    request.getFilters().getSort());
+            
+            // Use the filtered service method but ask for ALL results to ensure we have everything
+            // for manual pagination
+            pagedRooms = roomAvailabilityService.getAvailableRoomsWithFilters(
+                    request.getPropertyId(), 
+                    request.getStartDate(), 
+                    request.getEndDate(), 
+                    totalGuestCount, 
+                    request.getRoomCount(),
+                    request.getFilters(),
+                    0,  // Get first page
+                    1000); // Get all results (assuming no more than 1000 rooms)
+        } else {
+            // Legacy pagination handling but ask for ALL results
+            pagedRooms = roomAvailabilityService.getAvailableRoomsPaginated(
+                    request.getPropertyId(), 
+                    request.getStartDate(), 
+                    request.getEndDate(), 
+                    totalGuestCount, 
+                    request.getRoomCount(),
+                    0,  // Get first page
+                    1000); // Get all results (assuming no more than 1000 rooms)
+        }
+        
+        log.info("Original response - total: {}, content size: {}", 
+                pagedRooms.getTotalElements(), pagedRooms.getContent().size());
+        
+        // Get all rooms for pagination
+        List<AvailableRoomDTO> allRooms = pagedRooms.getContent();
+        int totalElements = allRooms.size();
+        int totalPages = (int) Math.ceil((double) totalElements / requestedPageSize);
+        
+        // Calculate the correct slices
+        int start = Math.min(requestedPageNumber * requestedPageSize, totalElements);
+        int end = Math.min((requestedPageNumber + 1) * requestedPageSize, totalElements);
+        
+        log.info("Manual pagination - total: {}, page: {}, size: {}, start: {}, end: {}", 
+                totalElements, requestedPageNumber, requestedPageSize, start, end);
+                
+        // Create a sublist with the correct content
+        List<AvailableRoomDTO> pageContent = start < end ? 
+                new ArrayList<>(allRooms.subList(start, end)) : new ArrayList<>();
+        
+        // Create a new page response with the correct content and metadata
+        PageResponse<AvailableRoomDTO> customPagedResponse = PageResponse.<AvailableRoomDTO>builder()
+                .content(pageContent)
+                .pageNumber(requestedPageNumber)
+                .pageSize(requestedPageSize)
+                .totalElements(totalElements)
+                .totalPages(totalPages)
+                .last(requestedPageNumber >= totalPages - 1)
+                .build();
+        
+        log.info("Final custom response - page: {}, size: {}, content size: {}", 
+                customPagedResponse.getPageNumber(), customPagedResponse.getPageSize(), 
+                customPagedResponse.getContent().size());
+                
+        return ResponseEntity.ok(customPagedResponse);
     }
 } 

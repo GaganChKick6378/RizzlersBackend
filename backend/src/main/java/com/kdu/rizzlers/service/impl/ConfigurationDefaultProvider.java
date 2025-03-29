@@ -115,6 +115,7 @@ public class ConfigurationDefaultProvider {
         Map<String, Object> defaultFilters = new HashMap<>();
         defaultFilters.put("enabled", true);
         defaultFilters.put("position", "left");
+        defaultFilters.put("show", true);
         
         // Default filter sections
         List<Map<String, Object>> defaultSections = new ArrayList<>();
