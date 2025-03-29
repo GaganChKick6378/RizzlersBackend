@@ -37,7 +37,7 @@ public class GraphQLPropertyServiceImpl implements GraphQLPropertyService {
     @Value("${graphql.api-key-header}")
     private String apiKeyHeader;
     
-    @Value("${graphql.timeout:30000}")
+    @Value("${graphql.timeout}")
     private int timeout;
 
     @Override
