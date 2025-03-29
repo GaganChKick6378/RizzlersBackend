@@ -2,6 +2,7 @@ package com.kdu.rizzlers.service.impl;
 
 import com.kdu.rizzlers.dto.out.AvailableRoomDTO;
 import com.kdu.rizzlers.dto.common.PageResponse;
+import com.kdu.rizzlers.dto.in.RoomAvailabilityRequestDTO.FilterDTO;
 import com.kdu.rizzlers.repository.ReviewRepository;
 import com.kdu.rizzlers.service.RoomAvailabilityService;
 import lombok.RequiredArgsConstructor;
@@ -587,5 +588,141 @@ public class RoomAvailabilityServiceImpl implements RoomAvailabilityService {
         
         // Convert the list to a paginated response
         return PageResponse.of(allAvailableRooms, pageNumber, pageSize);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<AvailableRoomDTO> getAvailableRoomsWithFilters(
+            final Integer propertyId, 
+            final LocalDate startDate, 
+            final LocalDate endDate, 
+            final Integer guestCount,
+            final Integer roomCount,
+            final FilterDTO filters,
+            final int pageNumber,
+            final int pageSize) {
+        
+        log.info("Fetching filtered paginated available rooms with filters: propertyId={}, startDate={}, endDate={}, guests={}, rooms={}, page={}, size={}", 
+                propertyId, startDate, endDate, guestCount, roomCount, pageNumber, pageSize);
+        
+        if (filters != null) {
+            log.info("Applied filters: roomTypes={}, ratings={}, amenities={}, priceRange={}, sort={}", 
+                    filters.getRoomType(), filters.getRatings(), filters.getAmenities(), filters.getPriceRange(), filters.getSort());
+        } else {
+            log.info("No filters applied");
+        }
+        
+        // Get all available rooms first using the existing method
+        List<AvailableRoomDTO> allAvailableRooms = getAvailableRooms(
+                propertyId, startDate, endDate, guestCount, roomCount);
+        
+        // Apply filters if provided
+        List<AvailableRoomDTO> filteredRooms = allAvailableRooms;
+        
+        if (filters != null) {
+            // Filter by room type if provided
+            if (filters.getRoomType() != null && !filters.getRoomType().isEmpty()) {
+                final List<String> roomTypes = filters.getRoomType();
+                filteredRooms = filteredRooms.stream()
+                        .filter(room -> room.getRoomTypeName() != null && 
+                              roomTypes.stream()
+                                    .anyMatch(type -> room.getRoomTypeName().toUpperCase().contains(type.toUpperCase())))
+                        .collect(Collectors.toList());
+                
+                log.debug("After room type filter: {} rooms remaining", filteredRooms.size());
+            }
+            
+            // Filter by ratings if provided
+            if (filters.getRatings() != null && !filters.getRatings().isEmpty()) {
+                final List<Integer> ratings = filters.getRatings();
+                filteredRooms = filteredRooms.stream()
+                        .filter(room -> room.getRating() != null && 
+                                room.getRating().getStars() != null &&
+                                ratings.stream()
+                                    .anyMatch(rating -> 
+                                        Math.floor(room.getRating().getStars()) == rating))
+                        .collect(Collectors.toList());
+                
+                log.debug("After ratings filter: {} rooms remaining", filteredRooms.size());
+            }
+            
+            // Filter by amenities if provided
+            if (filters.getAmenities() != null && !filters.getAmenities().isEmpty()) {
+                final List<String> amenities = filters.getAmenities();
+                filteredRooms = filteredRooms.stream()
+                        .filter(room -> room.getAmenities() != null && 
+                                amenities.stream()
+                                    .allMatch(amenity -> 
+                                        room.getAmenities().stream()
+                                            .anyMatch(a -> a.toLowerCase().contains(amenity.toLowerCase()))))
+                        .collect(Collectors.toList());
+                
+                log.debug("After amenities filter: {} rooms remaining", filteredRooms.size());
+            }
+            
+            // Filter by price range if provided
+            if (filters.getPriceRange() != null && filters.getPriceRange().size() == 2) {
+                final int minPrice = filters.getPriceRange().get(0);
+                final int maxPrice = filters.getPriceRange().get(1);
+                
+                filteredRooms = filteredRooms.stream()
+                        .filter(room -> room.getPrice() != null && 
+                                room.getPrice() >= minPrice && 
+                                room.getPrice() <= maxPrice)
+                        .collect(Collectors.toList());
+                
+                log.debug("After price range filter: {} rooms remaining", filteredRooms.size());
+            }
+            
+            // Apply sorting if provided
+            if (filters.getSort() != null && !filters.getSort().isEmpty()) {
+                switch (filters.getSort().toLowerCase()) {
+                    case "price-low-high":
+                        filteredRooms = filteredRooms.stream()
+                                .sorted(Comparator.comparing(AvailableRoomDTO::getPrice))
+                                .collect(Collectors.toList());
+                        break;
+                    case "price-high-low":
+                        filteredRooms = filteredRooms.stream()
+                                .sorted(Comparator.comparing(AvailableRoomDTO::getPrice).reversed())
+                                .collect(Collectors.toList());
+                        break;
+                    case "rating-high-low":
+                        filteredRooms = filteredRooms.stream()
+                                .sorted((r1, r2) -> {
+                                    Double rating1 = (r1.getRating() != null && r1.getRating().getStars() != null) ? 
+                                            r1.getRating().getStars() : 0.0;
+                                    Double rating2 = (r2.getRating() != null && r2.getRating().getStars() != null) ? 
+                                            r2.getRating().getStars() : 0.0;
+                                    return rating2.compareTo(rating1); // Higher ratings first
+                                })
+                                .collect(Collectors.toList());
+                        break;
+                    default:
+                        // Default sort is price-low-high
+                        filteredRooms = filteredRooms.stream()
+                                .sorted(Comparator.comparing(AvailableRoomDTO::getPrice))
+                                .collect(Collectors.toList());
+                        break;
+                }
+                
+                log.debug("Sorting applied: {}", filters.getSort());
+            } else {
+                // Default sorting by price if no sort option is provided
+                filteredRooms = filteredRooms.stream()
+                        .sorted(Comparator.comparing(AvailableRoomDTO::getPrice))
+                        .collect(Collectors.toList());
+            }
+        } else {
+            // Default sorting if no filters are provided
+            filteredRooms = filteredRooms.stream()
+                    .sorted(Comparator.comparing(AvailableRoomDTO::getPrice))
+                    .collect(Collectors.toList());
+        }
+        
+        log.info("Found {} rooms after applying filters", filteredRooms.size());
+        
+        // Convert the filtered list to a paginated response
+        return PageResponse.of(filteredRooms, pageNumber, pageSize);
     }
 } 

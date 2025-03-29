@@ -1,6 +1,7 @@
 package com.kdu.rizzlers.service;
 
 import com.kdu.rizzlers.dto.common.PageResponse;
+import com.kdu.rizzlers.dto.in.RoomAvailabilityRequestDTO.FilterDTO;
 import com.kdu.rizzlers.dto.out.AvailableRoomDTO;
 
 import java.time.LocalDate;
@@ -44,6 +45,30 @@ public interface RoomAvailabilityService {
         LocalDate endDate, 
         Integer guestCount,
         Integer roomCount,
+        int pageNumber,
+        int pageSize
+    );
+    
+    /**
+     * Get paginated available rooms for a property based on dates, guest count, and filters
+     * 
+     * @param propertyId The ID of the property
+     * @param startDate The check-in date
+     * @param endDate The check-out date
+     * @param guestCount Total number of guests
+     * @param roomCount Number of rooms requested
+     * @param filters Filters for room type, ratings, amenities, price range, and sort options
+     * @param pageNumber Page number (0-based)
+     * @param pageSize Size of each page
+     * @return Paginated list of filtered available rooms with their details
+     */
+    PageResponse<AvailableRoomDTO> getAvailableRoomsWithFilters(
+        Integer propertyId, 
+        LocalDate startDate, 
+        LocalDate endDate, 
+        Integer guestCount,
+        Integer roomCount,
+        FilterDTO filters,
         int pageNumber,
         int pageSize
     );
