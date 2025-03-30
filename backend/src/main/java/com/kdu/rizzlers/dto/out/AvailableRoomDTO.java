@@ -20,7 +20,13 @@ public class AvailableRoomDTO {
     private Integer singleBed;
     private Integer doubleBed;
     private String propertyAddress;
-    private Double price; // minimum nightly rate
+    
+    // Total price for the requested number of rooms, not per room price
+    private Double price;
+    
+    // Number of rooms that were requested and included in the price calculation
+    // (Only room types with at least this many available rooms are returned)
+    private Integer roomCount;
     
     // List of available room IDs for this room type
     private List<Integer> availableRoomIds;
