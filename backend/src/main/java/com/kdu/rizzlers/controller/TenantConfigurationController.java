@@ -87,6 +87,11 @@ public class TenantConfigurationController {
             log.info("Tenant {} results page config - filters 'show' value: {}", tenantId, fullConfig.getFilters().get("show"));
         }
         
+        // Log property image if available
+        if (fullConfig.getPropertyImage() != null) {
+            log.info("Tenant {} results page config - property image: {}", tenantId, fullConfig.getPropertyImage());
+        }
+        
         // Extract only the configuration fields requested
         Map<String, Object> configOnly = new HashMap<>();
         
@@ -105,6 +110,7 @@ public class TenantConfigurationController {
         configOnly.put("sorting", fullConfig.getSorting());
         configOnly.put("pagination", fullConfig.getPagination());
         configOnly.put("displayOptions", fullConfig.getDisplayOptions());
+        configOnly.put("propertyImage", fullConfig.getPropertyImage());
         
         // Log the final response
         log.info("Tenant {} results page final response - filters enabled: {}", tenantId, 
@@ -124,6 +130,11 @@ public class TenantConfigurationController {
         log.info("Basic endpoint: Tenant {} results page config - filters map keys: {}", tenantId, 
                  fullConfig.getFilters().keySet());
                  
+        // Log property image if available
+        if (fullConfig.getPropertyImage() != null) {
+            log.info("Basic endpoint: Tenant {} results page config - property image: {}", tenantId, fullConfig.getPropertyImage());
+        }
+        
         // Extract only the configuration fields requested
         Map<String, Object> configOnly = new HashMap<>();
         
@@ -142,6 +153,7 @@ public class TenantConfigurationController {
         configOnly.put("sorting", fullConfig.getSorting());
         configOnly.put("pagination", fullConfig.getPagination());
         configOnly.put("displayOptions", fullConfig.getDisplayOptions());
+        configOnly.put("propertyImage", fullConfig.getPropertyImage());
         
         // Log the final response
         log.info("Basic endpoint: Tenant {} results page final response - filters enabled: {}", tenantId, 

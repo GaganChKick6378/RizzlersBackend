@@ -636,4 +636,21 @@ public class ConfigurationValidator {
         
         return true;
     }
+
+    /**
+     * Validates property image configuration
+     */
+    public boolean validatePropertyImage(Map<String, Object> valueMap) {
+        if (!valueMap.containsKey("url")) {
+            log.warn("Property image missing required 'url' field");
+            return false;
+        }
+        
+        if (!valueMap.containsKey("alt")) {
+            log.warn("Property image missing 'alt' field, adding default");
+            valueMap.put("alt", "Property Image");
+        }
+        
+        return true;
+    }
 } 

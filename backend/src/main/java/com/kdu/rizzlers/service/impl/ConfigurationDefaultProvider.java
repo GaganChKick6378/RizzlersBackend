@@ -195,5 +195,11 @@ public class ConfigurationDefaultProvider {
         defaultDisplayOptions.put("max_amenities_shown", 3);
         defaultDisplayOptions.put("show_description", true);
         builder.displayOptions(defaultDisplayOptions);
+        
+        // Default property image
+        Map<String, Object> defaultPropertyImage = new HashMap<>();
+        defaultPropertyImage.put("url", "https://example.com/default-property-image.jpg");
+        defaultPropertyImage.put("alt", "Default Property Image");
+        builder.propertyImage(defaultPropertyImage);
     }
 } 

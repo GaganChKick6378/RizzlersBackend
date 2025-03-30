@@ -376,6 +376,12 @@ public class TenantConfigurationServiceImpl implements TenantConfigurationServic
                     builder.displayOptions(valueMap);
                 }
                 break;
+            case "property_image":
+                log.info("Processing property_image field: {}", valueMap);
+                if (configValidator.validatePropertyImage(valueMap)) {
+                    builder.propertyImage(valueMap);
+                }
+                break;
             // For backward compatibility with the older filter_options and sort_options fields
             case "filter_options":
                 log.info("Processing legacy field 'filter_options', consider migrating to 'filters'");
