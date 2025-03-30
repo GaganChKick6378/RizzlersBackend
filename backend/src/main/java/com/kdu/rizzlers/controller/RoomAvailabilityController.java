@@ -145,6 +145,10 @@ public class RoomAvailabilityController {
         final int requestedPageNumber = request.getPage() != null ? request.getPage() : 0;
         final int requestedPageSize = request.getSize() != null ? request.getSize() : 10;
         
+        // Log room availability constraints for clarity
+        log.info("Request for {} rooms: Only room types with at least this many available rooms will be returned", 
+                request.getRoomCount());
+        
         log.info("POST request to find paginated available rooms with parameters:");
         log.info("- Property ID: {}", request.getPropertyId());
         log.info("- Date Range: {} to {}", request.getStartDate(), request.getEndDate());

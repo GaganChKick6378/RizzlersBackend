@@ -52,6 +52,11 @@ public class RoomAvailabilityServiceImpl implements RoomAvailabilityService {
         
         log.info("Fetching available rooms for propertyId={}, startDate={}, endDate={}, guests={}, rooms={}", 
                 propertyId, startDate, endDate, guestCount, roomCount);
+        
+        // Log a warning if room count is unreasonably large
+        if (roomCount > 10) {
+            log.warn("Requesting a high number of rooms ({}). This may limit available options.", roomCount);
+        }
 
         // Create a GraphQL client
         final HttpGraphQlClient graphQlClient = createGraphQlClient();
@@ -166,18 +171,27 @@ public class RoomAvailabilityServiceImpl implements RoomAvailabilityService {
                     continue;
                 }
                 
+                // Extract all room IDs for this room type
+                final List<Integer> roomIds = roomsOfType.stream()
+                    .map(room -> (Integer) room.get("room_id"))
+                    .collect(Collectors.toList());
+                
+                // Skip if there aren't enough rooms available to fulfill the request
+                if (roomIds.size() < roomCount) {
+                    log.info("Skipping room type {} because it only has {} rooms available but {} were requested", 
+                            roomTypeId, roomIds.size(), roomCount);
+                    continue;
+                }
+                
                 // Get the first room to extract room type info (they all share the same room type)
                 final Map<String, Object> firstRoom = roomsOfType.get(0);
                 final Map<String, Object> roomType = (Map<String, Object>) firstRoom.get("room_type");
                 
                 // Get price from our map as Integer and convert to Double for DTO
                 final Integer priceValue = roomTypePrices.get(roomTypeId);
-                final Double price = priceValue.doubleValue();
-                
-                // Extract all room IDs for this room type
-                final List<Integer> roomIds = roomsOfType.stream()
-                    .map(room -> (Integer) room.get("room_id"))
-                    .collect(Collectors.toList());
+                final Double price = priceValue.doubleValue() * roomCount;
+                log.info("Calculated price for room type {}: {} per night × {} rooms = {}", 
+                        roomTypeId, priceValue, roomCount, price);
                 
                 // Fetch additional data from RDS
                 // Get review data
@@ -210,6 +224,7 @@ public class RoomAvailabilityServiceImpl implements RoomAvailabilityService {
                     .doubleBed((Integer) roomType.get("double_bed"))
                     .propertyAddress(propertyAddress)
                     .price(price)
+                    .roomCount(roomCount)
                     .availableRoomIds(roomIds)
                     .availableRoomCount(roomIds.size())
                     .bedTypes(bedTypes)
@@ -665,10 +680,18 @@ public class RoomAvailabilityServiceImpl implements RoomAvailabilityService {
                 final int minPrice = filters.getPriceRange().get(0);
                 final int maxPrice = filters.getPriceRange().get(1);
                 
+                log.info("Filtering rooms by price range: {} to {} per night (total for {} rooms)", 
+                        minPrice, maxPrice, roomCount);
+                
+                // Since our price in the DTO is already multiplied by roomCount,
+                // we need to compare using the total price range
+                final int totalMinPrice = minPrice * roomCount;
+                final int totalMaxPrice = maxPrice * roomCount;
+                
                 filteredRooms = filteredRooms.stream()
                         .filter(room -> room.getPrice() != null && 
-                                room.getPrice() >= minPrice && 
-                                room.getPrice() <= maxPrice)
+                                room.getPrice() >= totalMinPrice && 
+                                room.getPrice() <= totalMaxPrice)
                         .collect(Collectors.toList());
                 
                 log.debug("After price range filter: {} rooms remaining", filteredRooms.size());
