@@ -26,4 +26,7 @@ public class ResultsPageConfigResponse {
     private Map<String, Object> sorting;
     private Map<String, Object> pagination;
     private Map<String, Object> displayOptions;
+    
+    // Property image for results page
+    private Map<String, Object> propertyImage;
 } 
