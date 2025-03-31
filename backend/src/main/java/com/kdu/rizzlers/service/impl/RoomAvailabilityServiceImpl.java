@@ -623,12 +623,18 @@ public class RoomAvailabilityServiceImpl implements RoomAvailabilityService {
         log.info("Fetching filtered paginated available rooms with filters: propertyId={}, startDate={}, endDate={}, guests={}, rooms={}, page={}, size={}", 
                 propertyId, startDate, endDate, guestCount, roomCount, pageNumber, pageSize);
         
+        // Initialize bedCount for logging (we'll access it from the request in the controller)
+        Integer bedCount = null;
+        
         if (filters != null) {
             log.info("Applied filters: roomTypes={}, ratings={}, amenities={}, priceRange={}, sort={}", 
-                    filters.getRoomType(), filters.getRatings(), filters.getAmenities(), filters.getPriceRange(), filters.getSort());
+                    filters.getRoomType(), filters.getRatings(), filters.getAmenities(), 
+                    filters.getPriceRange(), filters.getSort());
         } else {
             log.info("No filters applied");
         }
+        
+        log.info("Additional request parameters: bedCount={}", bedCount);
         
         // Get all available rooms first using the existing method
         List<AvailableRoomDTO> allAvailableRooms = getAvailableRooms(
