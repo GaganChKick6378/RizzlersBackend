@@ -23,6 +23,17 @@ public class TinyUrlShortenerService implements UrlShortenerService {
 
     @Override
     public String shortenUrl(String longUrl) {
+        // Check for null or empty URLs
+        if (longUrl == null) {
+            log.info("Received null URL, returning null");
+            return null;
+        }
+        
+        if (longUrl.isEmpty()) {
+            log.info("Received empty URL, returning empty string");
+            return "";
+        }
+        
         log.info("Shortening URL: {}", longUrl);
         
         try {

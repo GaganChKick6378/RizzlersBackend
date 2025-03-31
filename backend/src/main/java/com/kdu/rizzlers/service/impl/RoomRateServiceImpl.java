@@ -53,7 +53,7 @@ public class RoomRateServiceImpl implements RoomRateService {
     @Override
     @Transactional(readOnly = true)
     public List<PropertyPromotionSchedule> getAllPromotions(Integer propertyId) {
-        return propertyPromotionScheduleRepository.findAllByPropertyId(propertyId);
+        return propertyPromotionScheduleRepository.findByPropertyIdAndIsVisibleTrue(propertyId);
     }
     
     @Override
@@ -80,7 +80,7 @@ public class RoomRateServiceImpl implements RoomRateService {
         
         // STEP 3: Get ALL promotions from the property_promotion_schedule table
         List<PropertyPromotionSchedule> promotions = getAllPromotions(propertyId);
-        log.info("Found {} promotions for property {}", promotions.size(), propertyId);
+        log.info("Found {} visible promotions for property {}", promotions.size(), propertyId);
         
         // STEP 4: Create a map of date -> promotion for faster lookups
         Map<LocalDate, PropertyPromotionSchedule> dateToPromotionMap = new HashMap<>();

@@ -6,12 +6,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.jdbc.Sql;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -171,5 +173,210 @@ public class PropertyPromotionScheduleRepositoryTest {
         // Test with inactive promotion
         promotion.setIsActive(false);
         assertFalse(promotion.isDateInPromotionPeriod(dateInRange));
+    }
+
+    @Test
+    // Should find promotions by property ID
+    @Sql("/sql/insert-test-promotions.sql")
+    void findByPropertyId() {
+        // Arrange
+        Integer propertyId = 1;
+
+        // Act
+        List<PropertyPromotionSchedule> promotions = repository.findByPropertyId(propertyId);
+
+        // Assert
+        assertFalse(promotions.isEmpty());
+        promotions.forEach(promotion -> 
+            assertEquals(propertyId, promotion.getPropertyId())
+        );
+    }
+
+    @Test
+    // Should find promotions by promotion ID
+    @Sql("/sql/insert-test-promotions.sql")
+    void findByPromotionId() {
+        // Arrange
+        Integer promotionId = 100;
+
+        // Act
+        List<PropertyPromotionSchedule> promotions = repository.findByPromotionId(promotionId);
+
+        // Assert
+        assertFalse(promotions.isEmpty());
+        promotions.forEach(promotion -> 
+            assertEquals(promotionId, promotion.getPromotionId())
+        );
+    }
+
+    @Test
+    
+    @Sql("/sql/insert-test-promotions.sql")
+    void findActivePromotionsForPropertyBetweenDates() {
+        // Arrange
+        Integer propertyId = 1;
+        LocalDate startDate = LocalDate.now().minusDays(5);
+        LocalDate endDate = LocalDate.now().plusDays(5);
+
+        // Act
+        List<PropertyPromotionSchedule> promotions = repository
+                .findActivePromotionsForPropertyBetweenDates(propertyId, startDate, endDate);
+
+        // Assert
+        assertFalse(promotions.isEmpty());
+        promotions.forEach(promotion -> {
+            assertEquals(propertyId, promotion.getPropertyId());
+            assertTrue(
+                (promotion.getStartDate().isBefore(endDate) || promotion.getStartDate().isEqual(endDate)) &&
+                (promotion.getEndDate().isAfter(startDate) || promotion.getEndDate().isEqual(startDate))
+            );
+        });
+    }
+
+    @Test
+    
+    @Sql("/sql/insert-test-promotions.sql")
+    void findActivePromotionsForPropertyInPeriod() {
+        // Arrange
+        Integer propertyId = 1;
+        LocalDate startDate = LocalDate.now().minusDays(5);
+        LocalDate endDate = LocalDate.now().plusDays(5);
+
+        // Act
+        List<PropertyPromotionSchedule> promotions = repository
+                .findActivePromotionsForPropertyInPeriod(propertyId, startDate, endDate);
+
+        // Assert
+        assertFalse(promotions.isEmpty());
+        promotions.forEach(promotion -> {
+            assertEquals(propertyId, promotion.getPropertyId());
+            assertTrue(promotion.getIsActive());
+            assertTrue(
+                // Start date is between search dates
+                (promotion.getStartDate().isAfter(startDate) || promotion.getStartDate().isEqual(startDate)) && 
+                (promotion.getStartDate().isBefore(endDate) || promotion.getStartDate().isEqual(endDate)) ||
+                // End date is between search dates
+                (promotion.getEndDate().isAfter(startDate) || promotion.getEndDate().isEqual(startDate)) && 
+                (promotion.getEndDate().isBefore(endDate) || promotion.getEndDate().isEqual(endDate)) ||
+                // Search start date is within promotion dates
+                (startDate.isAfter(promotion.getStartDate()) || startDate.isEqual(promotion.getStartDate())) && 
+                (startDate.isBefore(promotion.getEndDate()) || startDate.isEqual(promotion.getEndDate())) ||
+                // Search end date is within promotion dates
+                (endDate.isAfter(promotion.getStartDate()) || endDate.isEqual(promotion.getStartDate())) && 
+                (endDate.isBefore(promotion.getEndDate()) || endDate.isEqual(promotion.getEndDate()))
+            );
+        });
+    }
+
+    @Test
+    
+    @Sql("/sql/insert-test-promotions.sql")
+    void findByPropertyIdAndIsActiveTrue() {
+        // Arrange
+        Integer propertyId = 1;
+
+        // Act
+        List<PropertyPromotionSchedule> promotions = repository
+                .findByPropertyIdAndIsActiveTrue(propertyId);
+
+        // Assert
+        assertFalse(promotions.isEmpty());
+        promotions.forEach(promotion -> {
+            assertEquals(propertyId, promotion.getPropertyId());
+            assertTrue(promotion.getIsActive());
+        });
+    }
+
+    @Test
+    
+    @Sql("/sql/insert-test-promotions.sql")
+    void findActivePromotionsByPropertyIdAndDate() {
+        // Arrange
+        Integer propertyId = 1;
+        LocalDate date = LocalDate.now();
+
+        // Act
+        List<PropertyPromotionSchedule> promotions = repository
+                .findActivePromotionsByPropertyIdAndDate(propertyId, date);
+
+        // Assert
+        assertFalse(promotions.isEmpty());
+        promotions.forEach(promotion -> {
+            assertEquals(propertyId, promotion.getPropertyId());
+            assertTrue(promotion.getIsActive());
+            assertFalse(date.isBefore(promotion.getStartDate()));
+            assertFalse(date.isAfter(promotion.getEndDate()));
+        });
+    }
+
+    @Test
+    
+    @Sql("/sql/insert-test-promotions.sql")
+    void findByPromoCode() {
+        // Arrange
+        String promoCode = "SUMMER10";
+
+        // Act
+        Optional<PropertyPromotionSchedule> promotionOpt = repository
+                .findByPromoCode(promoCode);
+
+        // Assert
+        assertTrue(promotionOpt.isPresent());
+        assertEquals(promoCode, promotionOpt.get().getPromoCode());
+    }
+
+    @Test
+    
+    @Sql("/sql/insert-test-promotions.sql")
+    void findByPromoCodeAndIsActiveTrueAndIsVisibleTrueAndStartDateLessThanEqualAndEndDateGreaterThanEqual() {
+        // Arrange
+        String promoCode = "SUMMER10";
+        LocalDate currentDate = LocalDate.now();
+
+        // Act
+        Optional<PropertyPromotionSchedule> promotionOpt = repository
+                .findByPromoCodeAndIsActiveTrueAndIsVisibleTrueAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+                        promoCode, currentDate, currentDate);
+
+        // Assert
+        assertTrue(promotionOpt.isPresent());
+        PropertyPromotionSchedule promotion = promotionOpt.get();
+        assertEquals(promoCode, promotion.getPromoCode());
+        assertTrue(promotion.getIsActive());
+        assertTrue(promotion.getIsVisible());
+        assertFalse(currentDate.isBefore(promotion.getStartDate()));
+        assertFalse(currentDate.isAfter(promotion.getEndDate()));
+    }
+
+    @Test
+    
+    void testDateHelperMethods() {
+        // Arrange
+        LocalDate now = LocalDate.now();
+        PropertyPromotionSchedule promotion = PropertyPromotionSchedule.builder()
+                .startDate(now.minusDays(5))
+                .endDate(now.plusDays(5))
+                .isActive(true)
+                .isVisible(true)
+                .build();
+
+        // Act & Assert
+        assertTrue(promotion.isDateInPromotionPeriod(now));
+        assertTrue(promotion.isValidAndVisible(now));
+        
+        // Test dates outside range
+        assertFalse(promotion.isDateInPromotionPeriod(now.minusDays(10)));
+        assertFalse(promotion.isDateInPromotionPeriod(now.plusDays(10)));
+        
+        // Test inactive promotion
+        promotion.setIsActive(false);
+        assertFalse(promotion.isDateInPromotionPeriod(now));
+        assertFalse(promotion.isValidAndVisible(now));
+        
+        // Test invisible promotion
+        promotion.setIsActive(true);
+        promotion.setIsVisible(false);
+        assertTrue(promotion.isDateInPromotionPeriod(now));
+        assertFalse(promotion.isValidAndVisible(now));
     }
 } 
