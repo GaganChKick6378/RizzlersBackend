@@ -15,6 +15,11 @@ public interface PropertyPromotionScheduleRepository extends JpaRepository<Prope
     List<PropertyPromotionSchedule> findByPropertyId(Integer propertyId);
     List<PropertyPromotionSchedule> findByPromotionId(Integer promotionId);
     
+    /**
+     * Find all promotions for a property that are visible
+     */
+    List<PropertyPromotionSchedule> findByPropertyIdAndIsVisibleTrue(Integer propertyId);
+    
     @Query("SELECT p FROM PropertyPromotionSchedule p WHERE p.propertyId = :propertyId " +
            "AND ((p.startDate <= :endDate AND p.endDate >= :startDate))")
     List<PropertyPromotionSchedule> findActivePromotionsForPropertyBetweenDates(

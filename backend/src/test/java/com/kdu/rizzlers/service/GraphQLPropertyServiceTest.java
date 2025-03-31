@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kdu.rizzlers.dto.out.PropertyResponse;
 import com.kdu.rizzlers.service.impl.GraphQLPropertyServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -22,6 +23,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+/**
+ * Tests for the GraphQLPropertyService interface to ensure proper contract behavior
+ */
 @ExtendWith(MockitoExtension.class)
 class GraphQLPropertyServiceTest {
 
@@ -46,6 +50,10 @@ class GraphQLPropertyServiceTest {
     private GraphQLPropertyService graphQLPropertyService;
     private ObjectMapper objectMapper;
 
+    private PropertyResponse property1;
+    private PropertyResponse property2;
+    private List<Integer> propertyIds;
+
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
@@ -65,6 +73,131 @@ class GraphQLPropertyServiceTest {
         lenient().when(requestBodySpec.header(anyString(), anyString())).thenReturn(requestBodySpec);
         lenient().when(requestBodySpec.bodyValue(any())).thenReturn(requestHeadersSpec);
         lenient().when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+
+        // Setup test properties
+        property1 = PropertyResponse.builder()
+                .propertyId(101)
+                .propertyName("Luxury Hotel")
+                .propertyAddress("123 Main St, New York")
+                .contactNumber("555-1234")
+                .tenantId(1)
+                .build();
+
+        property2 = PropertyResponse.builder()
+                .propertyId(102)
+                .propertyName("Beach Resort")
+                .propertyAddress("456 Ocean Dr, Miami")
+                .contactNumber("555-5678")
+                .tenantId(1)
+                .build();
+
+        propertyIds = Arrays.asList(101, 102);
+    }
+
+    @Test
+    @DisplayName("getPropertiesByIds should return properties matching the provided IDs")
+    void getPropertiesByIds_shouldReturnMatchingProperties() {
+        // Arrange
+        String validResponse = """
+                {
+                  "data": {
+                    "listProperties": [
+                      {
+                        "property_id": 101,
+                        "property_name": "Luxury Hotel",
+                        "property_address": "123 Main St, New York",
+                        "contact_number": "555-1234",
+                        "tenant_id": 1
+                      },
+                      {
+                        "property_id": 102,
+                        "property_name": "Beach Resort",
+                        "property_address": "456 Ocean Dr, Miami",
+                        "contact_number": "555-5678",
+                        "tenant_id": 1
+                      }
+                    ]
+                  }
+                }
+                """;
+        
+        when(responseSpec.bodyToMono(String.class)).thenReturn(Mono.just(validResponse));
+        
+        // Act
+        List<PropertyResponse> result = graphQLPropertyService.getPropertiesByIds(propertyIds);
+        
+        // Assert
+        assertEquals(2, result.size());
+        assertEquals(101, result.get(0).getPropertyId());
+        assertEquals("Luxury Hotel", result.get(0).getPropertyName());
+        assertEquals(102, result.get(1).getPropertyId());
+        assertEquals("Beach Resort", result.get(1).getPropertyName());
+    }
+
+    @Test
+    @DisplayName("getPropertiesByIds should return empty list when no properties match")
+    void getPropertiesByIds_withNoMatches_shouldReturnEmptyList() {
+        // Arrange
+        String emptyResponse = """
+                {
+                  "data": {
+                    "listProperties": []
+                  }
+                }
+                """;
+        
+        when(responseSpec.bodyToMono(String.class)).thenReturn(Mono.just(emptyResponse));
+        
+        // Act
+        List<PropertyResponse> result = graphQLPropertyService.getPropertiesByIds(Arrays.asList(999, 888));
+        
+        // Assert
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    @DisplayName("getPropertiesByIds should handle null input gracefully")
+    void getPropertiesByIds_withNullInput_shouldHandleGracefully() {
+        // Act
+        List<PropertyResponse> result = graphQLPropertyService.getPropertiesByIds(null);
+        
+        // Assert
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
+        
+        // Verify that no WebClient calls were made
+        verify(webClientBuilder, never()).build();
+    }
+
+    @Test
+    @DisplayName("getPropertiesByIds should return subset of properties that match")
+    void getPropertiesByIds_withPartialMatches_shouldReturnMatchingSubset() {
+        // Arrange
+        String partialResponse = """
+                {
+                  "data": {
+                    "listProperties": [
+                      {
+                        "property_id": 101,
+                        "property_name": "Luxury Hotel",
+                        "property_address": "123 Main St, New York",
+                        "contact_number": "555-1234",
+                        "tenant_id": 1
+                      }
+                    ]
+                  }
+                }
+                """;
+        
+        when(responseSpec.bodyToMono(String.class)).thenReturn(Mono.just(partialResponse));
+        
+        // Act
+        List<PropertyResponse> result = graphQLPropertyService.getPropertiesByIds(Arrays.asList(101, 999));
+        
+        // Assert
+        assertEquals(1, result.size());
+        assertEquals(101, result.get(0).getPropertyId());
+        assertEquals("Luxury Hotel", result.get(0).getPropertyName());
     }
 
     @Test

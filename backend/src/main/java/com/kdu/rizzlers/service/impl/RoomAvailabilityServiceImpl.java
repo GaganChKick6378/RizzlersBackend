@@ -364,7 +364,10 @@ public class RoomAvailabilityServiceImpl implements RoomAvailabilityService {
         final String startDateStr = startDate.atStartOfDay(ZoneOffset.UTC).format(DateTimeFormatter.ISO_INSTANT);
         final String endDateStr = endDate.atTime(23, 59, 59).atZone(ZoneOffset.UTC).format(DateTimeFormatter.ISO_INSTANT);
         
-        log.info("Checking room availability from {} to {}", startDateStr, endDateStr);
+        // NOTE: For availability checks, we DO need to include the checkout date, to ensure
+        // the room is not booked by someone else on the day this guest is checking out
+        log.info("Checking room availability from {} to {} (including checkout date for availability)", 
+                startDateStr, endDateStr);
         
         // Query to get all available rooms for the period, using booking status filtering
         final String availabilityQuery = String.format("""
@@ -534,8 +537,8 @@ public class RoomAvailabilityServiceImpl implements RoomAvailabilityService {
                                 rateDate = LocalDate.parse(dateStr);
                             }
                             
-                            // Only include rates within our date range
-                            if (!rateDate.isBefore(startDate) && !rateDate.isAfter(endDate)) {
+                            // Only include rates within our date range and exclude the checkout date
+                            if (!rateDate.isBefore(startDate) && rateDate.isBefore(endDate)) {
                                 pricesByRoomType.computeIfAbsent(roomTypeId, k -> new ArrayList<>()).add(nightlyRate);
                             }
                         } catch (Exception e) {
@@ -544,7 +547,7 @@ public class RoomAvailabilityServiceImpl implements RoomAvailabilityService {
                     }
                 }
                 
-                log.info("Found rates for {} room types within date range", pricesByRoomType.size());
+                log.info("Found rates for {} room types within date range (excluding checkout date)", pricesByRoomType.size());
             } else {
                 log.info("No rates found for the requested room types");
             }

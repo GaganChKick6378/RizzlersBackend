@@ -2,19 +2,23 @@ package com.kdu.rizzlers.service.impl;
 
 import com.kdu.rizzlers.dto.in.CombinedPromotionRequestDTO;
 import com.kdu.rizzlers.dto.in.PromotionEligibilityRequestDTO;
+import com.kdu.rizzlers.dto.out.DailyRoomRateDTO;
 import com.kdu.rizzlers.dto.out.PromotionDTO;
 import com.kdu.rizzlers.entity.PropertyPromotion;
 import com.kdu.rizzlers.repository.PropertyPromotionRepository;
 import com.kdu.rizzlers.service.PromotionGraphQLService;
 import com.kdu.rizzlers.service.PromotionService;
+import com.kdu.rizzlers.service.RoomRateService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -25,6 +29,7 @@ public class PromotionServiceImpl implements PromotionService {
 
     private final PromotionGraphQLService promotionGraphQLService;
     private final PropertyPromotionRepository propertyPromotionRepository;
+    private final RoomRateService roomRateService;
 
     @Override
     public List<PromotionDTO> getAllPromotions() {
@@ -159,6 +164,111 @@ public class PromotionServiceImpl implements PromotionService {
                 .collect(Collectors.toList());
         
         log.info("Filtered down to {} eligible promotions", eligiblePromotions.size());
+        
+        // Fetch all daily rates for the property and date range
+        List<DailyRoomRateDTO> dailyRates = roomRateService.getDailyRatesWithPromotions(
+                null, // tenantId is not needed as per the implementation
+                request.getPropertyId()
+        );
+        
+        // Filter daily rates to only include dates within the request range
+        // IMPORTANT: Exclude the end date (checkout date) from pricing calculations
+        List<DailyRoomRateDTO> filteredDailyRates = dailyRates.stream()
+                .filter(rate -> 
+                    (rate.getDate().isEqual(request.getStartDate()) || rate.getDate().isAfter(request.getStartDate())) && 
+                    rate.getDate().isBefore(request.getEndDate())) // Exclude the end date
+                .collect(Collectors.toList());
+        
+        log.info("Found {} daily rates within the requested date range (excluding checkout date)", filteredDailyRates.size());
+        
+        // Calculate original prices (average of daily rates)
+        double originalPrice = 0;
+        if (!filteredDailyRates.isEmpty()) {
+            originalPrice = filteredDailyRates.stream()
+                    .mapToDouble(DailyRoomRateDTO::getMinimumRate)
+                    .average()
+                    .orElse(0);
+        }
+        
+        log.info("Average original price: {}", originalPrice);
+        
+        // Create a map of date -> standard rate for looking up standard rates by date
+        Map<LocalDate, Double> dateToRateMap = filteredDailyRates.stream()
+                .collect(Collectors.toMap(DailyRoomRateDTO::getDate, DailyRoomRateDTO::getMinimumRate));
+        
+        // Get all property-specific promotions from the repository
+        List<PropertyPromotion> rdsPromotions = propertyPromotionRepository
+                .findActiveAndVisiblePromotionsForPropertyInDateRange(
+                        request.getPropertyId(), request.getStartDate(), request.getEndDate().minusDays(1)); // Adjust end date
+        
+        // Create a map of promotion ID -> promotion for fast lookup
+        Map<Integer, PropertyPromotion> promotionIdToPromotionMap = rdsPromotions.stream()
+                .collect(Collectors.toMap(PropertyPromotion::getPromotionId, p -> p, (p1, p2) -> p1));
+        
+        log.info("Found {} RDS promotions for the date range", promotionIdToPromotionMap.size());
+        
+        // Calculate discounted prices for each promotion
+        for (PromotionDTO promotion : eligiblePromotions) {
+            promotion.setOriginalPrice(originalPrice);
+            Integer promotionId = promotion.getPromotionId();
+            
+            // Check if this is an RDS promotion by looking up in our map
+            if (promotionIdToPromotionMap.containsKey(promotionId)) {
+                log.debug("Processing RDS promotion ID: {}", promotionId);
+                PropertyPromotion rdsPromotion = promotionIdToPromotionMap.get(promotionId);
+                
+                // Calculate day-by-day prices for the booking period
+                double totalStandardPrice = 0;
+                double totalDiscountedPrice = 0;
+                int daysCount = 0;
+                
+                // For each date in the booking range (excluding checkout date)
+                LocalDate currentDate = request.getStartDate();
+                while (currentDate.isBefore(request.getEndDate())) { // Exclude the end date
+                    Double standardRate = dateToRateMap.get(currentDate);
+                    if (standardRate != null) {
+                        // Add to total standard price
+                        totalStandardPrice += standardRate;
+                        
+                        // Check if this date is within the promotion's date range
+                        if (!currentDate.isBefore(rdsPromotion.getStartDate()) && 
+                            !currentDate.isAfter(rdsPromotion.getEndDate())) {
+                            // Apply discount for this date
+                            totalDiscountedPrice += standardRate * rdsPromotion.getPriceFactor();
+                            log.debug("Date {} has promotion: standard rate {} * factor {} = {}", 
+                                    currentDate, standardRate, rdsPromotion.getPriceFactor(), 
+                                    standardRate * rdsPromotion.getPriceFactor());
+                        } else {
+                            // No promotion for this date
+                            totalDiscountedPrice += standardRate;
+                            log.debug("Date {} has NO promotion: standard rate {}", currentDate, standardRate);
+                        }
+                        daysCount++;
+                    }
+                    currentDate = currentDate.plusDays(1);
+                }
+                
+                // Calculate averages
+                double avgStandardPrice = daysCount > 0 ? totalStandardPrice / daysCount : 0;
+                double avgDiscountedPrice = daysCount > 0 ? totalDiscountedPrice / daysCount : 0;
+                
+                promotion.setOriginalPrice(avgStandardPrice);
+                promotion.setDiscountedPrice(avgDiscountedPrice);
+                
+                log.info("RDS promotion {}: original price = {}, discounted price = {}", 
+                        promotionId, avgStandardPrice, avgDiscountedPrice);
+            } 
+            // For GraphQL promotions, apply a single price factor
+            else {
+                log.debug("Processing GraphQL promotion ID: {}", promotionId);
+                double discountedPrice = originalPrice * promotion.getPriceFactor();
+                promotion.setDiscountedPrice(discountedPrice);
+                
+                log.info("GraphQL promotion {}: original price = {}, price factor = {}, discounted price = {}", 
+                        promotionId, originalPrice, promotion.getPriceFactor(), discountedPrice);
+            }
+        }
+        
         return eligiblePromotions;
     }
     

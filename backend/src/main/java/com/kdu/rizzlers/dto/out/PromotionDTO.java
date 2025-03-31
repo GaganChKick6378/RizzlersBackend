@@ -28,4 +28,10 @@ public class PromotionDTO {
     
     @JsonProperty("is_deactivated")
     private Boolean isDeactivated;
+    
+    @JsonProperty("original_price")
+    private Double originalPrice;
+    
+    @JsonProperty("discounted_price")
+    private Double discountedPrice;
 } 

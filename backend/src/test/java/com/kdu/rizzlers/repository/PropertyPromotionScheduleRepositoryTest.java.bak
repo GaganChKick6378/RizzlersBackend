@@ -210,7 +210,7 @@ public class PropertyPromotionScheduleRepositoryTest {
     }
 
     @Test
-    
+    @DisplayName("Should find active promotions for property between dates")
     @Sql("/sql/insert-test-promotions.sql")
     void findActivePromotionsForPropertyBetweenDates() {
         // Arrange
@@ -234,7 +234,7 @@ public class PropertyPromotionScheduleRepositoryTest {
     }
 
     @Test
-    
+    @DisplayName("Should find active promotions for property in period")
     @Sql("/sql/insert-test-promotions.sql")
     void findActivePromotionsForPropertyInPeriod() {
         // Arrange
@@ -269,7 +269,7 @@ public class PropertyPromotionScheduleRepositoryTest {
     }
 
     @Test
-    
+    @DisplayName("Should find active promotions by property ID")
     @Sql("/sql/insert-test-promotions.sql")
     void findByPropertyIdAndIsActiveTrue() {
         // Arrange
@@ -288,7 +288,7 @@ public class PropertyPromotionScheduleRepositoryTest {
     }
 
     @Test
-    
+    @DisplayName("Should find active promotions by property ID and date")
     @Sql("/sql/insert-test-promotions.sql")
     void findActivePromotionsByPropertyIdAndDate() {
         // Arrange
@@ -310,7 +310,7 @@ public class PropertyPromotionScheduleRepositoryTest {
     }
 
     @Test
-    
+    @DisplayName("Should find promotion by promo code")
     @Sql("/sql/insert-test-promotions.sql")
     void findByPromoCode() {
         // Arrange
@@ -326,7 +326,7 @@ public class PropertyPromotionScheduleRepositoryTest {
     }
 
     @Test
-    
+    @DisplayName("Should find active and visible promotion by promo code and date range")
     @Sql("/sql/insert-test-promotions.sql")
     void findByPromoCodeAndIsActiveTrueAndIsVisibleTrueAndStartDateLessThanEqualAndEndDateGreaterThanEqual() {
         // Arrange
@@ -349,7 +349,7 @@ public class PropertyPromotionScheduleRepositoryTest {
     }
 
     @Test
-    
+    @DisplayName("Should test date helper methods")
     void testDateHelperMethods() {
         // Arrange
         LocalDate now = LocalDate.now();

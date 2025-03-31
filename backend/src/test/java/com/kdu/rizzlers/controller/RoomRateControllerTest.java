@@ -1,21 +1,22 @@
 package com.kdu.rizzlers.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kdu.rizzlers.dto.out.DailyRoomRateDTO;
 import com.kdu.rizzlers.entity.PropertyPromotionSchedule;
 import com.kdu.rizzlers.service.RoomRateService;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -23,141 +24,198 @@ import java.util.List;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 
-@ExtendWith(MockitoExtension.class)
-public class RoomRateControllerTest {
+@WebMvcTest(RoomRateController.class)
+@AutoConfigureMockMvc(addFilters = false)
+class RoomRateControllerTest {
 
-    @Mock
-    private RoomRateService roomRateService;
-    
-    @InjectMocks
-    private RoomRateController roomRateController;
-    
+    @Autowired
     private MockMvc mockMvc;
-    
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @MockBean
+    private RoomRateService roomRateService;
+
+    private PropertyPromotionSchedule promotion1;
+    private PropertyPromotionSchedule promotion2;
+    private List<DailyRoomRateDTO> dailyRates;
+
     @BeforeEach
-    public void setup() {
-        mockMvc = MockMvcBuilders.standaloneSetup(roomRateController).build();
-    }
-    
-    @Test
-    public void testGetActivePromotions() throws Exception {
-        // Given
-        Integer propertyId = 1;
-        LocalDate startDate = LocalDate.now();
-        LocalDate endDate = LocalDate.now().plusDays(5);
-        String formattedStartDate = startDate.format(DateTimeFormatter.ISO_DATE);
-        String formattedEndDate = endDate.format(DateTimeFormatter.ISO_DATE);
-        
-        PropertyPromotionSchedule promotion = new PropertyPromotionSchedule();
-        promotion.setId(1L);
-        promotion.setPropertyId(propertyId);
-        promotion.setPromotionId(101);
-        promotion.setPriceFactor(BigDecimal.valueOf(0.8));
-        promotion.setStartDate(startDate.minusDays(2));
-        promotion.setEndDate(endDate.plusDays(2));
-        promotion.setIsActive(true);
-        
-        when(roomRateService.getActivePromotions(eq(propertyId), any(LocalDate.class), any(LocalDate.class)))
-                .thenReturn(Collections.singletonList(promotion));
-        
-        // When & Then
-        mockMvc.perform(get("/room-rates/promotions")
-                .param("propertyId", propertyId.toString())
-                .param("startDate", formattedStartDate)
-                .param("endDate", formattedEndDate)
-                .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(1)))
-                .andExpect(jsonPath("$[0].propertyId", is(propertyId)))
-                .andExpect(jsonPath("$[0].promotionId", is(101)))
-                .andExpect(jsonPath("$[0].priceFactor", is(0.8)));
-    }
-    
-    @Test
-    public void testGetAllPromotions() throws Exception {
-        // Given
-        Integer propertyId = 1;
-        
-        PropertyPromotionSchedule promotion1 = new PropertyPromotionSchedule();
-        promotion1.setId(1L);
-        promotion1.setPropertyId(propertyId);
-        promotion1.setPromotionId(101);
-        promotion1.setPriceFactor(BigDecimal.valueOf(0.8));
-        promotion1.setStartDate(LocalDate.now().minusDays(5));
-        promotion1.setEndDate(LocalDate.now().plusDays(5));
-        promotion1.setIsActive(true);
-        
-        PropertyPromotionSchedule promotion2 = new PropertyPromotionSchedule();
-        promotion2.setId(2L);
-        promotion2.setPropertyId(propertyId);
-        promotion2.setPromotionId(102);
-        promotion2.setPriceFactor(BigDecimal.valueOf(0.9));
-        promotion2.setStartDate(LocalDate.now().plusDays(10));
-        promotion2.setEndDate(LocalDate.now().plusDays(20));
-        promotion2.setIsActive(true);
-        
-        when(roomRateService.getAllPromotions(propertyId))
-                .thenReturn(Arrays.asList(promotion1, promotion2));
-        
-        // When & Then
-        mockMvc.perform(get("/room-rates/all-promotions")
-                .param("propertyId", propertyId.toString())
-                .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(2)))
-                .andExpect(jsonPath("$[0].propertyId", is(propertyId)))
-                .andExpect(jsonPath("$[0].promotionId", is(101)))
-                .andExpect(jsonPath("$[1].propertyId", is(propertyId)))
-                .andExpect(jsonPath("$[1].promotionId", is(102)));
-    }
-    
-    @Test
-    public void testGetDailyRatesWithPromotions() throws Exception {
-        // Given
-        Integer tenantId = 1;
-        Integer propertyId = 1;
-        
-        DailyRoomRateDTO dto1 = DailyRoomRateDTO.builder()
+    void setup() {
+        // Setup test promotions
+        promotion1 = PropertyPromotionSchedule.builder()
+                .id(1L)
+                .propertyId(100)
+                .promotionId(200)
+                .title("Summer Special")
+                .description("20% off for summer bookings")
+                .promoCode("SUMMER20")
+                .priceFactor(new BigDecimal("0.80"))
+                .startDate(LocalDate.now().minusDays(10))
+                .endDate(LocalDate.now().plusDays(30))
+                .isActive(true)
+                .isVisible(true)
+                .build();
+
+        promotion2 = PropertyPromotionSchedule.builder()
+                .id(2L)
+                .propertyId(100)
+                .promotionId(201)
+                .title("Early Bird")
+                .description("15% off for early bookings")
+                .promoCode("EARLY15")
+                .priceFactor(new BigDecimal("0.85"))
+                .startDate(LocalDate.now().minusDays(5))
+                .endDate(LocalDate.now().plusDays(20))
+                .isActive(true)
+                .isVisible(true)
+                .build();
+
+        // Setup daily rates
+        dailyRates = Arrays.asList(
+            DailyRoomRateDTO.builder()
                 .date(LocalDate.now())
                 .minimumRate(100.0)
                 .hasPromotion(true)
-                .promotionId(101)
+                .promotionId(200)
                 .priceFactor(0.8)
                 .discountedRate(80.0)
-                .build();
-        
-        DailyRoomRateDTO dto2 = DailyRoomRateDTO.builder()
+                .build(),
+            DailyRoomRateDTO.builder()
                 .date(LocalDate.now().plusDays(1))
-                .minimumRate(110.0)
-                .hasPromotion(false)
-                .priceFactor(1.0)
-                .discountedRate(110.0)
-                .build();
-        
-        when(roomRateService.getDailyRatesWithPromotions(tenantId, propertyId))
-                .thenReturn(Arrays.asList(dto1, dto2));
-        
-        // When & Then
+                .minimumRate(120.0)
+                .hasPromotion(true)
+                .promotionId(201)
+                .priceFactor(0.85)
+                .discountedRate(102.0)
+                .build()
+        );
+    }
+
+    @Test
+    @DisplayName("Should return active promotions for a date range")
+    void getActivePromotions_shouldReturnPromotionsForDateRange() throws Exception {
+        // Arrange
+        when(roomRateService.getActivePromotions(anyInt(), any(LocalDate.class), any(LocalDate.class)))
+                .thenReturn(Arrays.asList(promotion1, promotion2));
+
+        // Act & Assert
+        mockMvc.perform(get("/room-rates/promotions")
+                .with(csrf())
+                .param("propertyId", "100")
+                .param("startDate", LocalDate.now().toString())
+                .param("endDate", LocalDate.now().plusDays(10).toString())
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].id", is(1)))
+                .andExpect(jsonPath("$[0].propertyId", is(100)))
+                .andExpect(jsonPath("$[0].title", is("Summer Special")))
+                .andExpect(jsonPath("$[1].id", is(2)))
+                .andExpect(jsonPath("$[1].title", is("Early Bird")));
+    }
+
+    @Test
+    @DisplayName("Should return empty list when no active promotions exist")
+    void getActivePromotions_withNoActivePromotions_shouldReturnEmptyList() throws Exception {
+        // Arrange
+        when(roomRateService.getActivePromotions(anyInt(), any(LocalDate.class), any(LocalDate.class)))
+                .thenReturn(Collections.emptyList());
+
+        // Act & Assert
+        mockMvc.perform(get("/room-rates/promotions")
+                .with(csrf())
+                .param("propertyId", "100")
+                .param("startDate", LocalDate.now().toString())
+                .param("endDate", LocalDate.now().plusDays(10).toString())
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+    }
+
+    @Test
+    @DisplayName("Should return all promotions for a property")
+    void getAllPromotions_shouldReturnAllPromotions() throws Exception {
+        // Arrange
+        when(roomRateService.getAllPromotions(anyInt()))
+                .thenReturn(Arrays.asList(promotion1, promotion2));
+
+        // Act & Assert
+        mockMvc.perform(get("/room-rates/all-promotions")
+                .with(csrf())
+                .param("propertyId", "100")
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].id", is(1)))
+                .andExpect(jsonPath("$[0].propertyId", is(100)))
+                .andExpect(jsonPath("$[0].title", is("Summer Special")))
+                .andExpect(jsonPath("$[1].id", is(2)))
+                .andExpect(jsonPath("$[1].title", is("Early Bird")));
+    }
+
+    @Test
+    @DisplayName("Should return empty list when no promotions exist")
+    void getAllPromotions_withNoPromotions_shouldReturnEmptyList() throws Exception {
+        // Arrange
+        when(roomRateService.getAllPromotions(anyInt()))
+                .thenReturn(Collections.emptyList());
+
+        // Act & Assert
+        mockMvc.perform(get("/room-rates/all-promotions")
+                .with(csrf())
+                .param("propertyId", "100")
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+    }
+
+    @Test
+    @DisplayName("Should return daily rates with promotions")
+    void getDailyRatesWithPromotions_shouldReturnDailyRates() throws Exception {
+        // Arrange
+        when(roomRateService.getDailyRatesWithPromotions(anyInt(), anyInt()))
+                .thenReturn(dailyRates);
+
+        // Act & Assert
         mockMvc.perform(get("/room-rates/daily-rates")
-                .param("tenantId", tenantId.toString())
-                .param("propertyId", propertyId.toString())
+                .with(csrf())
+                .param("tenantId", "1")
+                .param("propertyId", "100")
                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(2)))
                 .andExpect(jsonPath("$[0].minimum_rate", is(100.0)))
                 .andExpect(jsonPath("$[0].has_promotion", is(true)))
-                .andExpect(jsonPath("$[0].promotion_id", is(101)))
+                .andExpect(jsonPath("$[0].promotion_id", is(200)))
                 .andExpect(jsonPath("$[0].price_factor", is(0.8)))
                 .andExpect(jsonPath("$[0].discounted_rate", is(80.0)))
-                .andExpect(jsonPath("$[1].minimum_rate", is(110.0)))
-                .andExpect(jsonPath("$[1].has_promotion", is(false)))
-                .andExpect(jsonPath("$[1].price_factor", is(1.0)))
-                .andExpect(jsonPath("$[1].discounted_rate", is(110.0)));
+                .andExpect(jsonPath("$[1].minimum_rate", is(120.0)))
+                .andExpect(jsonPath("$[1].promotion_id", is(201)));
+    }
+
+    @Test
+    @DisplayName("Should return empty list when no daily rates exist")
+    void getDailyRatesWithPromotions_withNoRates_shouldReturnEmptyList() throws Exception {
+        // Arrange
+        when(roomRateService.getDailyRatesWithPromotions(anyInt(), anyInt()))
+                .thenReturn(Collections.emptyList());
+
+        // Act & Assert
+        mockMvc.perform(get("/room-rates/daily-rates")
+                .with(csrf())
+                .param("tenantId", "1")
+                .param("propertyId", "100")
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
     }
 } 

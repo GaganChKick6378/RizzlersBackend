@@ -96,13 +96,13 @@ public class RoomAvailabilityController {
      *                - roomCount: Number of rooms required (default: 1)
      * @return List of available rooms with their details
      */
-    @GetMapping("/available")
+    @PostMapping("/available")
     public ResponseEntity<List<AvailableRoomDTO>> getAvailableRooms(
             @RequestBody RoomAvailabilityRequestDTO request) {
         
         int totalGuestCount = request.getTotalGuestCount();
         
-        log.info("GET request with body to find available rooms for property: {}, dates: {} to {}, " +
+        log.info("POST request with body to find available rooms for property: {}, dates: {} to {}, " +
                 "guests: {}, guestCount: {}, adults: {}, seniors: {}, kids: {}, rooms: {}", 
                 request.getPropertyId(), request.getStartDate(), request.getEndDate(), 
                 request.getGuests(), request.getGuestCount(),
