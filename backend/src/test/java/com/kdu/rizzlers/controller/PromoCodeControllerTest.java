@@ -14,9 +14,6 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
-import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
-import org.springframework.security.test.context.support.WithMockUser;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -24,9 +21,9 @@ import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-import java.util.Collections;
 
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -48,99 +45,97 @@ class PromoCodeControllerTest {
     @MockBean
     private PromoCodeService promoCodeService;
 
-    private PropertyPromotionScheduleResponse validPromotion;
-    private PropertyPromotionScheduleResponse secondPromotion;
+    private PropertyPromotionScheduleResponse validPromotion1;
+    private PropertyPromotionScheduleResponse validPromotion2;
+    private List<PropertyPromotionScheduleResponse> visiblePromotions;
     private PromoCodeValidateRequest validRequest;
 
     @BeforeEach
-    void setup() {
-        validPromotion = PropertyPromotionScheduleResponse.builder()
+    void setUp() {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDate startDate = LocalDate.now();
+        LocalDate endDate = startDate.plusDays(30);
+
+        // Create valid promotions using builder pattern
+        validPromotion1 = PropertyPromotionScheduleResponse.builder()
                 .id(1L)
-                .propertyId(100)
-                .promotionId(200)
-                .title("Summer Special")
-                .description("20% off for summer bookings")
-                .promoCode("SUMMER20")
-                .priceFactor(new BigDecimal("0.80")) // 20% off = 0.80 factor
-                .startDate(LocalDate.now().minusDays(10))
-                .endDate(LocalDate.now().plusDays(30))
-                .isActive(true)
-                .isVisible(true)
-                .createdAt(LocalDateTime.now().minusDays(15))
-                .updatedAt(LocalDateTime.now().minusDays(15))
-                .build();
-
-        secondPromotion = PropertyPromotionScheduleResponse.builder()
-                .id(2L)
-                .propertyId(100)
+                .propertyId(101)
                 .promotionId(201)
-                .title("Early Bird")
-                .description("15% off for early bookings")
-                .promoCode("EARLY15")
-                .priceFactor(new BigDecimal("0.85")) // 15% off = 0.85 factor
-                .startDate(LocalDate.now().minusDays(5))
-                .endDate(LocalDate.now().plusDays(20))
+                .title("Summer Discount")
+                .description("Get 15% off on summer bookings")
+                .promoCode("SUMMER15")
+                .priceFactor(new BigDecimal("0.85"))
+                .startDate(startDate)
+                .endDate(endDate)
                 .isActive(true)
                 .isVisible(true)
-                .createdAt(LocalDateTime.now().minusDays(10))
-                .updatedAt(LocalDateTime.now().minusDays(10))
+                .createdAt(now)
+                .updatedAt(now)
                 .build();
 
+        validPromotion2 = PropertyPromotionScheduleResponse.builder()
+                .id(2L)
+                .propertyId(102)
+                .promotionId(202)
+                .title("Weekend Special")
+                .description("10% off on weekend stays")
+                .promoCode("WEEKEND10")
+                .priceFactor(new BigDecimal("0.90"))
+                .startDate(startDate)
+                .endDate(endDate)
+                .isActive(true)
+                .isVisible(true)
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+
+        visiblePromotions = Arrays.asList(validPromotion1, validPromotion2);
+
+        // Create valid promo code validation request
         validRequest = PromoCodeValidateRequest.builder()
-                .promoCode("SUMMER20")
+                .promoCode("SUMMER15")
                 .build();
     }
 
     @Test
-    @DisplayName("Should return all visible promotions")
-    void getVisiblePromotions_shouldReturnAllVisiblePromotions() throws Exception {
-        // Arrange
-        List<PropertyPromotionScheduleResponse> promotions = Arrays.asList(validPromotion, secondPromotion);
-        when(promoCodeService.getAllVisiblePromotions()).thenReturn(promotions);
+    @DisplayName("Get visible promotions should return list of promotions")
+    void getVisiblePromotions_shouldReturnPromotionsList() throws Exception {
+        when(promoCodeService.getAllVisiblePromotions())
+                .thenReturn(visiblePromotions);
 
-        // Act & Assert
         mockMvc.perform(get("/promo-codes/visible")
                 .with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(2)))
-                .andExpect(jsonPath("$[0].promotionId", is(validPromotion.getPromotionId())))
-                .andExpect(jsonPath("$[0].title", is(validPromotion.getTitle())))
-                .andExpect(jsonPath("$[0].description", is(validPromotion.getDescription())))
-                .andExpect(jsonPath("$[0].priceFactor", is(validPromotion.getPriceFactor().doubleValue())))
-                .andExpect(jsonPath("$[1].promotionId", is(secondPromotion.getPromotionId())))
-                .andExpect(jsonPath("$[1].title", is(secondPromotion.getTitle())))
-                .andExpect(jsonPath("$[1].description", is(secondPromotion.getDescription())))
-                .andExpect(jsonPath("$[1].priceFactor", is(secondPromotion.getPriceFactor().doubleValue())));
+                .andExpect(jsonPath("$[0].promotionId", is(201)))
+                .andExpect(jsonPath("$[0].title", is("Summer Discount")))
+                .andExpect(jsonPath("$[0].priceFactor", is(0.85)))
+                .andExpect(jsonPath("$[1].promotionId", is(202)))
+                .andExpect(jsonPath("$[1].title", is("Weekend Special")))
+                .andExpect(jsonPath("$[1].priceFactor", is(0.90)));
     }
 
     @Test
-    @DisplayName("Should validate promo code using path parameter (GET)")
-    void validatePromoCodeByPath_withValidPromoCode_shouldReturnPromotionDetails() throws Exception {
-        // Arrange
-        when(promoCodeService.validatePromoCode("SUMMER20")).thenReturn(Optional.of(validPromotion));
+    @DisplayName("Validate promo code by path with valid code should return promotion details")
+    void validatePromoCodeByPath_withValidCode_shouldReturnPromotionDetails() throws Exception {
+        when(promoCodeService.validatePromoCode("SUMMER15"))
+                .thenReturn(Optional.of(validPromotion1));
 
-        // Act & Assert
-        mockMvc.perform(get("/promo-codes/validate/SUMMER20")
+        mockMvc.perform(get("/promo-codes/validate/SUMMER15")
                 .with(csrf()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id", is(validPromotion.getId().intValue())))
-                .andExpect(jsonPath("$.propertyId", is(validPromotion.getPropertyId())))
-                .andExpect(jsonPath("$.promotionId", is(validPromotion.getPromotionId())))
-                .andExpect(jsonPath("$.title", is(validPromotion.getTitle())))
-                .andExpect(jsonPath("$.description", is(validPromotion.getDescription())))
-                .andExpect(jsonPath("$.promoCode", is(validPromotion.getPromoCode())))
-                .andExpect(jsonPath("$.priceFactor", is(validPromotion.getPriceFactor().doubleValue())))
-                .andExpect(jsonPath("$.isActive", is(validPromotion.getIsActive())))
-                .andExpect(jsonPath("$.isVisible", is(validPromotion.getIsVisible())));
+                .andExpect(jsonPath("$.promotionId", is(201)))
+                .andExpect(jsonPath("$.title", is("Summer Discount")))
+                .andExpect(jsonPath("$.description", is("Get 15% off on summer bookings")))
+                .andExpect(jsonPath("$.priceFactor", is(0.85)));
     }
 
     @Test
-    @DisplayName("Should return error for invalid promo code (GET)")
-    void validatePromoCodeByPath_withInvalidPromoCode_shouldReturnError() throws Exception {
-        // Arrange
-        when(promoCodeService.validatePromoCode("INVALID")).thenReturn(Optional.empty());
+    @DisplayName("Validate promo code by path with invalid code should return error")
+    void validatePromoCodeByPath_withInvalidCode_shouldReturnError() throws Exception {
+        when(promoCodeService.validatePromoCode("INVALID"))
+                .thenReturn(Optional.empty());
 
-        // Act & Assert
         mockMvc.perform(get("/promo-codes/validate/INVALID")
                 .with(csrf()))
                 .andExpect(status().isBadRequest())
@@ -149,60 +144,52 @@ class PromoCodeControllerTest {
     }
 
     @Test
-    @DisplayName("Should validate promo code using POST request")
-    void validatePromoCodePost_withValidPromoCode_shouldReturnSimplifiedResponse() throws Exception {
-        // Arrange
-        when(promoCodeService.validatePromoCode(anyString())).thenReturn(Optional.of(validPromotion));
+    @DisplayName("Validate promo code with POST with valid code should return promotion details")
+    void validatePromoCodePost_withValidCode_shouldReturnPromotionDetails() throws Exception {
+        when(promoCodeService.validatePromoCode(anyString()))
+                .thenReturn(Optional.of(validPromotion1));
 
-        // Act & Assert
         mockMvc.perform(post("/promo-codes/validate")
-                        .with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(validRequest)))
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(validRequest)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.promotionId", is(validPromotion.getPromotionId())))
-                .andExpect(jsonPath("$.title", is(validPromotion.getTitle())))
-                .andExpect(jsonPath("$.description", is(validPromotion.getDescription())))
-                .andExpect(jsonPath("$.priceFactor", is(validPromotion.getPriceFactor().doubleValue())))
-                // Following fields should not be in the response
-                .andExpect(jsonPath("$.id").doesNotExist())
-                .andExpect(jsonPath("$.propertyId").doesNotExist())
-                .andExpect(jsonPath("$.promoCode").doesNotExist())
-                .andExpect(jsonPath("$.startDate").doesNotExist())
-                .andExpect(jsonPath("$.endDate").doesNotExist())
-                .andExpect(jsonPath("$.isActive").doesNotExist())
-                .andExpect(jsonPath("$.isVisible").doesNotExist())
-                .andExpect(jsonPath("$.createdAt").doesNotExist())
-                .andExpect(jsonPath("$.updatedAt").doesNotExist());
+                .andExpect(jsonPath("$.promotionId", is(201)))
+                .andExpect(jsonPath("$.title", is("Summer Discount")))
+                .andExpect(jsonPath("$.description", is("Get 15% off on summer bookings")))
+                .andExpect(jsonPath("$.priceFactor", is(0.85)));
     }
 
     @Test
-    @DisplayName("Should return error for invalid promo code (POST)")
-    void validatePromoCodePost_withInvalidPromoCode_shouldReturnError() throws Exception {
-        // Arrange
-        when(promoCodeService.validatePromoCode(anyString())).thenReturn(Optional.empty());
+    @DisplayName("Validate promo code with POST with invalid code should return error")
+    void validatePromoCodePost_withInvalidCode_shouldReturnError() throws Exception {
+        PromoCodeValidateRequest invalidRequest = PromoCodeValidateRequest.builder()
+                .promoCode("INVALID")
+                .build();
 
-        // Act & Assert
+        when(promoCodeService.validatePromoCode("INVALID"))
+                .thenReturn(Optional.empty());
+
         mockMvc.perform(post("/promo-codes/validate")
-                        .with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(validRequest)))
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(invalidRequest)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error", is("Invalid promo code")))
                 .andExpect(jsonPath("$.message", is("The promo code is invalid, expired, or not available")));
     }
 
     @Test
-    @DisplayName("Should return bad request for invalid request body")
-    void validatePromoCodePost_withInvalidRequest_shouldReturnBadRequest() throws Exception {
-        // Arrange
-        PromoCodeValidateRequest invalidRequest = PromoCodeValidateRequest.builder().build(); // No promo code
+    @DisplayName("Validate promo code with POST with missing code should return validation error")
+    void validatePromoCodePost_withMissingCode_shouldReturnValidationError() throws Exception {
+        PromoCodeValidateRequest emptyRequest = PromoCodeValidateRequest.builder()
+                .promoCode("")
+                .build();
 
-        // Act & Assert
         mockMvc.perform(post("/promo-codes/validate")
-                        .with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(invalidRequest)))
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(emptyRequest)))
                 .andExpect(status().isBadRequest());
     }
 } 

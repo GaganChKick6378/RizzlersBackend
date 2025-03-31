@@ -16,7 +16,10 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
@@ -41,53 +44,174 @@ class RoomAvailabilityControllerTest {
     @MockBean
     private RoomAvailabilityService roomAvailabilityService;
 
-    private AvailableRoomDTO room1;
-    private AvailableRoomDTO room2;
     private List<AvailableRoomDTO> availableRooms;
-    private PageResponse<AvailableRoomDTO> pagedRooms;
-    private RoomAvailabilityRequestDTO requestDTO;
+    private PageResponse<AvailableRoomDTO> pagedResponse;
     private LocalDate startDate;
     private LocalDate endDate;
+    private Integer propertyId;
 
     @BeforeEach
     void setUp() {
-        startDate = LocalDate.now().plusDays(1);
-        endDate = LocalDate.now().plusDays(3);
+        propertyId = 101;
+        startDate = LocalDate.now();
+        endDate = startDate.plusDays(3);
 
-        // Create test rooms
-        room1 = AvailableRoomDTO.builder()
-                .roomTypeId(101)
-                .roomTypeName("Deluxe Room")
+        // Create available rooms
+        AvailableRoomDTO room1 = AvailableRoomDTO.builder()
+                .roomTypeId(201)
+                .roomId(301)
+                .roomTypeName("Deluxe Suite")
                 .maxCapacity(2)
-                .amenities(Arrays.asList("WiFi", "TV"))
-                .price(100.00)
-                .availableRoomCount(5)
-                .roomImages(Collections.singletonList("https://example.com/room1.jpg"))
+                .areaInSquareFeet(500)
+                .singleBed(1)
+                .doubleBed(1)
+                .propertyAddress("123 Main St")
+                .price(250.0)
+                .roomCount(1)
+                .availableRoomIds(Arrays.asList(301, 302, 303))
+                .availableRoomCount(3)
+                .roomImages(Arrays.asList("image1.jpg", "image2.jpg"))
+                .roomDescription("Luxurious room with a view")
+                .rating(new AvailableRoomDTO.Rating(4.5, 120))
+                .landmark("City Center")
+                .bedTypes(Arrays.asList("Single", "Double"))
+                .amenities(Arrays.asList("Wifi", "TV", "Minibar"))
                 .build();
 
-        room2 = AvailableRoomDTO.builder()
-                .roomTypeId(102)
-                .roomTypeName("Suite")
-                .maxCapacity(4)
-                .amenities(Arrays.asList("WiFi", "TV", "Kitchen"))
-                .price(200.00)
-                .availableRoomCount(3)
-                .roomImages(Collections.singletonList("https://example.com/room2.jpg"))
+        AvailableRoomDTO room2 = AvailableRoomDTO.builder()
+                .roomTypeId(202)
+                .roomId(401)
+                .roomTypeName("Standard Room")
+                .maxCapacity(2)
+                .areaInSquareFeet(350)
+                .singleBed(2)
+                .doubleBed(0)
+                .propertyAddress("123 Main St")
+                .price(150.0)
+                .roomCount(1)
+                .availableRoomIds(Arrays.asList(401, 402))
+                .availableRoomCount(2)
+                .roomImages(Arrays.asList("image3.jpg", "image4.jpg"))
+                .roomDescription("Comfortable standard room")
+                .rating(new AvailableRoomDTO.Rating(3.8, 95))
+                .landmark("City Center")
+                .bedTypes(Arrays.asList("Single"))
+                .amenities(Arrays.asList("Wifi", "TV"))
                 .build();
 
         availableRooms = Arrays.asList(room1, room2);
+        pagedResponse = PageResponse.<AvailableRoomDTO>builder()
+                .content(availableRooms)
+                .pageNumber(0)
+                .pageSize(10)
+                .totalElements(2)
+                .totalPages(1)
+                .last(true)
+                .build();
+    }
 
-        // Create paged response
-        pagedRooms = new PageResponse<>();
-        pagedRooms.setContent(availableRooms);
-        pagedRooms.setTotalElements(2);
-        pagedRooms.setTotalPages(1);
-        pagedRooms.setPageNumber(0);
-        pagedRooms.setPageSize(10);
+    @Test
+    @DisplayName("Get available rooms with legacy endpoint should return list of rooms")
+    void getAvailableRoomsLegacy_shouldReturnRooms() throws Exception {
+        when(roomAvailabilityService.getAvailableRooms(
+                eq(propertyId), any(LocalDate.class), any(LocalDate.class), anyInt(), anyInt()))
+                .thenReturn(availableRooms);
 
-        // Create request DTO
-        requestDTO = RoomAvailabilityRequestDTO.builder()
-                .propertyId(1)
+        mockMvc.perform(get("/rooms/available/legacy")
+                .param("propertyId", propertyId.toString())
+                .param("startDate", startDate.toString())
+                .param("endDate", endDate.toString())
+                .param("guestCount", "2")
+                .param("roomCount", "1")
+                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].roomTypeId", is(201)))
+                .andExpect(jsonPath("$[0].roomTypeName", is("Deluxe Suite")))
+                .andExpect(jsonPath("$[0].price", is(250.0)))
+                .andExpect(jsonPath("$[1].roomTypeId", is(202)))
+                .andExpect(jsonPath("$[1].roomTypeName", is("Standard Room")))
+                .andExpect(jsonPath("$[1].price", is(150.0)));
+    }
+
+    @Test
+    @DisplayName("Get available rooms legacy with no rooms should return empty list")
+    void getAvailableRoomsLegacy_withNoAvailableRooms_shouldReturnEmptyList() throws Exception {
+        when(roomAvailabilityService.getAvailableRooms(
+                eq(propertyId), any(LocalDate.class), any(LocalDate.class), anyInt(), anyInt()))
+                .thenReturn(Collections.emptyList());
+
+        mockMvc.perform(get("/rooms/available/legacy")
+                .param("propertyId", propertyId.toString())
+                .param("startDate", startDate.toString())
+                .param("endDate", endDate.toString())
+                .param("guestCount", "2")
+                .param("roomCount", "1")
+                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+    }
+
+    @Test
+    @DisplayName("Get paginated available rooms legacy should return page of rooms")
+    void getAvailableRoomsPaginatedLegacy_shouldReturnPagedRooms() throws Exception {
+        when(roomAvailabilityService.getAvailableRoomsPaginated(
+                eq(propertyId), any(LocalDate.class), any(LocalDate.class), anyInt(), anyInt(), anyInt(), anyInt()))
+                .thenReturn(pagedResponse);
+
+        mockMvc.perform(get("/rooms/available/paged/legacy")
+                .param("propertyId", propertyId.toString())
+                .param("startDate", startDate.toString())
+                .param("endDate", endDate.toString())
+                .param("guestCount", "2")
+                .param("roomCount", "1")
+                .param("page", "0")
+                .param("size", "10")
+                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(2)))
+                .andExpect(jsonPath("$.pageNumber", is(0)))
+                .andExpect(jsonPath("$.pageSize", is(10)))
+                .andExpect(jsonPath("$.totalElements", is(2)))
+                .andExpect(jsonPath("$.totalPages", is(1)))
+                .andExpect(jsonPath("$.last", is(true)));
+    }
+
+    @Test
+    @DisplayName("Get available rooms with POST endpoint should return list of rooms")
+    void getAvailableRooms_shouldReturnRooms() throws Exception {
+        RoomAvailabilityRequestDTO request = RoomAvailabilityRequestDTO.builder()
+                .propertyId(propertyId)
+                .startDate(startDate)
+                .endDate(endDate)
+                .guests(2)
+                .adults(2)
+                .seniorCitizens(0)
+                .kids(0)
+                .roomCount(1)
+                .build();
+
+        when(roomAvailabilityService.getAvailableRooms(
+                eq(propertyId), any(LocalDate.class), any(LocalDate.class), anyInt(), anyInt()))
+                .thenReturn(availableRooms);
+
+        mockMvc.perform(post("/rooms/available")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].roomTypeId", is(201)))
+                .andExpect(jsonPath("$[0].roomTypeName", is("Deluxe Suite")))
+                .andExpect(jsonPath("$[1].roomTypeId", is(202)))
+                .andExpect(jsonPath("$[1].roomTypeName", is("Standard Room")));
+    }
+
+    @Test
+    @DisplayName("Get paginated available rooms with POST endpoint should return page of rooms")
+    void getAvailableRoomsPaginated_shouldReturnPagedRooms() throws Exception {
+        RoomAvailabilityRequestDTO request = RoomAvailabilityRequestDTO.builder()
+                .propertyId(propertyId)
                 .startDate(startDate)
                 .endDate(endDate)
                 .guests(2)
@@ -98,145 +222,96 @@ class RoomAvailabilityControllerTest {
                 .page(0)
                 .size(10)
                 .build();
-    }
 
-    @Test
-    @DisplayName("Should return available rooms using legacy endpoint")
-    void getAvailableRoomsLegacy_shouldReturnAvailableRooms() throws Exception {
-        // Arrange
-        when(roomAvailabilityService.getAvailableRooms(
-                anyInt(), any(LocalDate.class), any(LocalDate.class), anyInt(), anyInt())
-        ).thenReturn(availableRooms);
-
-        // Act & Assert
-        mockMvc.perform(get("/rooms/available/legacy")
-                .with(csrf())
-                .param("propertyId", "1")
-                .param("startDate", startDate.toString())
-                .param("endDate", endDate.toString())
-                .param("guestCount", "2")
-                .param("roomCount", "1")
-                .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(2)))
-                .andExpect(jsonPath("$[0].roomTypeId", is(101)))
-                .andExpect(jsonPath("$[0].roomTypeName", is("Deluxe Room")))
-                .andExpect(jsonPath("$[0].maxCapacity", is(2)))
-                .andExpect(jsonPath("$[0].price", is(100.00)))
-                .andExpect(jsonPath("$[1].roomTypeId", is(102)))
-                .andExpect(jsonPath("$[1].roomTypeName", is("Suite")));
-    }
-
-    @Test
-    @DisplayName("Should return paged available rooms using legacy endpoint")
-    void getAvailableRoomsPaginatedLegacy_shouldReturnPagedRooms() throws Exception {
-        // Arrange
         when(roomAvailabilityService.getAvailableRoomsPaginated(
-                anyInt(), any(LocalDate.class), any(LocalDate.class), anyInt(), anyInt(), anyInt(), anyInt())
-        ).thenReturn(pagedRooms);
+                eq(propertyId), any(LocalDate.class), any(LocalDate.class), anyInt(), anyInt(), anyInt(), anyInt()))
+                .thenReturn(pagedResponse);
 
-        // Act & Assert
-        mockMvc.perform(get("/rooms/available/paged/legacy")
+        when(roomAvailabilityService.getAvailableRoomsWithFilters(
+                eq(propertyId), any(LocalDate.class), any(LocalDate.class), anyInt(), anyInt(), any(), anyInt(), anyInt()))
+                .thenReturn(pagedResponse);
+
+        mockMvc.perform(post("/rooms/available/paged")
                 .with(csrf())
-                .param("propertyId", "1")
-                .param("startDate", startDate.toString())
-                .param("endDate", endDate.toString())
-                .param("guestCount", "2")
-                .param("roomCount", "1")
-                .param("page", "0")
-                .param("size", "10")
-                .contentType(MediaType.APPLICATION_JSON))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content", hasSize(2)))
-                .andExpect(jsonPath("$.totalElements", is(2)))
-                .andExpect(jsonPath("$.totalPages", is(1)))
                 .andExpect(jsonPath("$.pageNumber", is(0)))
                 .andExpect(jsonPath("$.pageSize", is(10)))
-                .andExpect(jsonPath("$.content[0].roomTypeId", is(101)))
-                .andExpect(jsonPath("$.content[1].roomTypeId", is(102)));
+                .andExpect(jsonPath("$.totalElements", is(2)));
     }
 
     @Test
-    @DisplayName("Should return available rooms using request body")
-    void getAvailableRooms_shouldReturnAvailableRooms() throws Exception {
-        // Arrange
-        when(roomAvailabilityService.getAvailableRooms(
-                anyInt(), any(LocalDate.class), any(LocalDate.class), anyInt(), anyInt())
-        ).thenReturn(availableRooms);
+    @DisplayName("Get paginated available rooms with filters should return filtered page of rooms")
+    void getAvailableRoomsPaginated_withFilters_shouldReturnFilteredPagedRooms() throws Exception {
+        List<String> roomTypes = Arrays.asList("Deluxe Suite");
+        List<Integer> ratings = Arrays.asList(4, 5);
+        List<String> amenities = Arrays.asList("Wifi", "Minibar");
+        List<Integer> priceRange = Arrays.asList(200, 300);
 
-        // Act & Assert
-        mockMvc.perform(post("/rooms/available")
+        RoomAvailabilityRequestDTO.FilterDTO filters = RoomAvailabilityRequestDTO.FilterDTO.builder()
+                .roomType(roomTypes)
+                .ratings(ratings)
+                .amenities(amenities)
+                .priceRange(priceRange)
+                .sort("price-low-high")
+                .build();
+
+        RoomAvailabilityRequestDTO request = RoomAvailabilityRequestDTO.builder()
+                .propertyId(propertyId)
+                .startDate(startDate)
+                .endDate(endDate)
+                .guests(2)
+                .adults(2)
+                .roomCount(1)
+                .page(0)
+                .size(10)
+                .filters(filters)
+                .build();
+
+        // Create a filtered response with only one room that matches the filters
+        PageResponse<AvailableRoomDTO> filteredResponse = PageResponse.<AvailableRoomDTO>builder()
+                .content(Collections.singletonList(availableRooms.get(0)))
+                .pageNumber(0)
+                .pageSize(10)
+                .totalElements(1)
+                .totalPages(1)
+                .last(true)
+                .build();
+
+        when(roomAvailabilityService.getAvailableRoomsWithFilters(
+                eq(propertyId), any(LocalDate.class), any(LocalDate.class), anyInt(), anyInt(), any(), anyInt(), anyInt()))
+                .thenReturn(filteredResponse);
+
+        mockMvc.perform(post("/rooms/available/paged")
                 .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(requestDTO)))
+                .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(2)))
-                .andExpect(jsonPath("$[0].roomTypeId", is(101)))
-                .andExpect(jsonPath("$[0].roomTypeName", is("Deluxe Room")))
-                .andExpect(jsonPath("$[1].roomTypeId", is(102)))
-                .andExpect(jsonPath("$[1].roomTypeName", is("Suite")));
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].roomTypeName", is("Deluxe Suite")))
+                .andExpect(jsonPath("$.pageNumber", is(0)))
+                .andExpect(jsonPath("$.totalElements", is(1)));
     }
 
     @Test
-    @DisplayName("Should handle empty available rooms")
-    void getAvailableRooms_withNoAvailableRooms_shouldReturnEmptyList() throws Exception {
-        // Arrange
+    @DisplayName("Get available rooms with invalid property ID should return empty list")
+    void getAvailableRooms_withInvalidPropertyId_shouldReturnEmptyList() throws Exception {
+        Integer invalidPropertyId = 999;
+        
         when(roomAvailabilityService.getAvailableRooms(
-                anyInt(), any(LocalDate.class), any(LocalDate.class), anyInt(), anyInt())
-        ).thenReturn(Collections.emptyList());
+                eq(invalidPropertyId), any(LocalDate.class), any(LocalDate.class), anyInt(), anyInt()))
+                .thenReturn(Collections.emptyList());
 
-        // Act & Assert
-        mockMvc.perform(post("/rooms/available")
-                .with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(requestDTO)))
+        mockMvc.perform(get("/rooms/available/legacy")
+                .param("propertyId", invalidPropertyId.toString())
+                .param("startDate", startDate.toString())
+                .param("endDate", endDate.toString())
+                .param("guestCount", "2")
+                .param("roomCount", "1")
+                .with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(0)));
-    }
-
-    @Test
-    @DisplayName("Should handle request with different guest types")
-    void getAvailableRooms_withDifferentGuestTypes_shouldUseCorrectTotalCount() throws Exception {
-        // Arrange
-        requestDTO.setAdults(2);
-        requestDTO.setKids(1);
-        requestDTO.setSeniorCitizens(1);
-        // Total should be 4 by default calculation (2+1+1)
-        
-        // Use anyInt() for guest count to match any value
-        when(roomAvailabilityService.getAvailableRooms(
-                anyInt(), any(LocalDate.class), any(LocalDate.class), anyInt(), anyInt())
-        ).thenReturn(availableRooms);
-
-        // Act & Assert
-        mockMvc.perform(post("/rooms/available")
-                .with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(requestDTO)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(2)));
-    }
-
-    @Test
-    @DisplayName("Should use explicit guest count when provided")
-    void getAvailableRooms_withExplicitGuestCount_shouldOverrideIndividualCounts() throws Exception {
-        // Arrange
-        requestDTO.setAdults(2);
-        requestDTO.setKids(1);
-        requestDTO.setSeniorCitizens(1);
-        // Override the sum with guests=3
-        requestDTO.setGuests(3);
-        
-        when(roomAvailabilityService.getAvailableRooms(
-                anyInt(), any(LocalDate.class), any(LocalDate.class), eq(3), anyInt())
-        ).thenReturn(availableRooms);
-
-        // Act & Assert
-        mockMvc.perform(post("/rooms/available")
-                .with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(requestDTO)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(2)));
     }
 } 

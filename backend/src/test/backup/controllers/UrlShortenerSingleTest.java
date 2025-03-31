@@ -28,7 +28,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 
 @WebMvcTest(UrlShortenerController.class)
 @AutoConfigureMockMvc(addFilters = false)
-class UrlShortenerControllerTest {
+class UrlShortenerSingleTest {
 
     @Autowired
     private MockMvc mockMvc;

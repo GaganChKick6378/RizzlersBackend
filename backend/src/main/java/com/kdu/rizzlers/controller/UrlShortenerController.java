@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -44,7 +45,54 @@ public class UrlShortenerController {
     }
 
     /**
-     * Endpoint to handle errors.
+     * Endpoint to handle validation errors.
+     *
+     * @return Error response
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, String>> handleValidationException(MethodArgumentNotValidException e) {
+        log.error("Validation error processing URL shortening request: {}", e.getMessage());
+        
+        Map<String, String> errorResponse = new HashMap<>();
+        errorResponse.put("error", "Failed to process request");
+        
+        if (e.getBindingResult().getFieldError() != null) {
+            String defaultMessage = e.getBindingResult().getFieldError().getDefaultMessage();
+            if (defaultMessage != null && defaultMessage.contains("Invalid URL format")) {
+                errorResponse.put("message", "Invalid URL format");
+            } else {
+                errorResponse.put("message", defaultMessage);
+            }
+        } else {
+            errorResponse.put("message", "Invalid request parameters");
+        }
+        
+        return ResponseEntity.badRequest().body(errorResponse);
+    }
+
+    /**
+     * Endpoint to handle illegal argument exceptions (like invalid URL format).
+     *
+     * @return Error response
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, String>> handleIllegalArgumentException(IllegalArgumentException e) {
+        log.error("Invalid argument error in URL shortening request: {}", e.getMessage());
+        
+        Map<String, String> errorResponse = new HashMap<>();
+        errorResponse.put("error", "Failed to process request");
+        
+        if (e.getMessage().contains("Invalid URL format")) {
+            errorResponse.put("message", "Invalid URL format");
+        } else {
+            errorResponse.put("message", e.getMessage());
+        }
+        
+        return ResponseEntity.badRequest().body(errorResponse);
+    }
+
+    /**
+     * Endpoint to handle general errors.
      *
      * @return Error response
      */
