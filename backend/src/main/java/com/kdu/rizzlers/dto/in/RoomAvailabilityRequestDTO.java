@@ -51,6 +51,11 @@ public class RoomAvailabilityRequestDTO {
     private Integer roomCount = 1;
     
     /**
+     * Total number of beds required (single + double beds)
+     */
+    private Integer bedCount;
+    
+    /**
      * Pagination details
      */
     @Builder.Default

@@ -15,6 +15,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
@@ -158,6 +159,7 @@ public class RoomAvailabilityController {
                 request.getAdults(), request.getSeniorCitizens(), request.getKids());
         log.info("- Final total guest count used: {}", totalGuestCount);
         log.info("- Room count: {}", request.getRoomCount());
+        log.info("- Bed count: {}", request.getBedCount());
         
         // Explicitly log the raw pagination values from the request
         log.info("- Raw pagination values - page: {}, size: {}", request.getPage(), request.getSize());
@@ -196,6 +198,40 @@ public class RoomAvailabilityController {
                     request.getRoomCount(),
                     0,  // Get first page
                     1000); // Get all results (assuming no more than 1000 rooms)
+        }
+
+        // Additional filtering for bedCount if provided
+        if (request.getBedCount() != null) {
+            log.info("Applying additional filter for bed count: {}", request.getBedCount());
+            
+            // Get all available rooms
+            List<AvailableRoomDTO> allRooms = pagedRooms.getContent();
+            
+            // Filter by bed count
+            List<AvailableRoomDTO> filteredRooms = allRooms.stream()
+                .filter(room -> {
+                    // Count single beds and double beds as 1 each
+                    int totalBeds = (room.getSingleBed() != null ? room.getSingleBed() : 0) + 
+                                  (room.getDoubleBed() != null ? room.getDoubleBed() : 0);
+                    return totalBeds >= request.getBedCount();
+                })
+                .collect(Collectors.toList());
+            
+            log.info("After bed count filter: {} rooms remaining out of {}", 
+                    filteredRooms.size(), allRooms.size());
+            
+            // Update pagedRooms with filtered content
+            int totalElements = filteredRooms.size();
+            int totalPages = (int) Math.ceil((double) totalElements / requestedPageSize);
+            
+            pagedRooms = PageResponse.<AvailableRoomDTO>builder()
+                .content(filteredRooms)
+                .pageNumber(0)
+                .pageSize(filteredRooms.size())
+                .totalElements(totalElements)
+                .totalPages(totalPages)
+                .last(true)
+                .build();
         }
         
         log.info("Original response - total: {}, content size: {}", 
