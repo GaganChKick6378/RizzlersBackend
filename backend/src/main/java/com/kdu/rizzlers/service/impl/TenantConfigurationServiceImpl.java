@@ -1,6 +1,7 @@
 package com.kdu.rizzlers.service.impl;
 
 import com.kdu.rizzlers.dto.in.TenantConfigurationRequest;
+import com.kdu.rizzlers.dto.out.DetailsPageConfigResponse;
 import com.kdu.rizzlers.dto.out.GuestTypeDefinitionResponse;
 import com.kdu.rizzlers.dto.out.LandingPageConfigResponse;
 import com.kdu.rizzlers.dto.out.PropertyResponse;
@@ -405,6 +406,121 @@ public class TenantConfigurationServiceImpl implements TenantConfigurationServic
                 log.warn("Unknown results page configuration field: {}", field);
                 break;
         }
+    }
+
+    @Override
+    public DetailsPageConfigResponse getDetailsPageConfiguration(Integer tenantId) {
+        log.info("Getting details page configuration for tenant: {}", tenantId);
+        
+        // Get configurations from the database
+        List<TenantConfiguration> configurations = tenantConfigurationRepository.findByTenantIdAndPageAndIsActive(
+                tenantId, "details", true);
+        
+        log.debug("Found {} active configurations for tenant: {} in details page", configurations.size(), tenantId);
+        
+        // Create response builder
+        DetailsPageConfigResponse.DetailsPageConfigResponseBuilder builder = DetailsPageConfigResponse.builder()
+                .tenantId(tenantId)
+                .page("details");
+        
+        // Set default values
+        setDefaultDetailsConfigValues(builder);
+        
+        // Process configurations
+        processDetailsPageConfigurations(configurations, builder);
+        
+        return builder.build();
+    }
+    
+    /**
+     * Process each configuration for details page and apply it to the builder if valid
+     * 
+     * @param configurations List of tenant configurations
+     * @param builder The response builder to update
+     */
+    private void processDetailsPageConfigurations(List<TenantConfiguration> configurations, 
+                                              DetailsPageConfigResponse.DetailsPageConfigResponseBuilder builder) {
+        for (TenantConfiguration config : configurations) {
+            String field = config.getField();
+            Map<String, Object> valueMap;
+            
+            try {
+                valueMap = JsonUtil.jsonToMap(config.getValue());
+                if (valueMap == null || valueMap.isEmpty()) {
+                    log.warn("Empty or invalid JSON for field: {}, tenant: {} in details page", field, config.getTenantId());
+                    continue; // Skip this field, use default value
+                }
+            } catch (Exception e) {
+                log.error("Error parsing JSON for field: {}, tenant: {} in details page, error: {}", 
+                          field, config.getTenantId(), e.getMessage());
+                continue; // Skip this field, use default value
+            }
+            
+            // Validate and set each field
+            try {
+                applyDetailsPageConfigurationField(field, valueMap, builder);
+            } catch (Exception e) {
+                log.error("Error validating field: {}, tenant: {} in details page, error: {}", 
+                          field, config.getTenantId(), e.getMessage());
+                // Continue with the next field, keeping the default value for this one
+            }
+        }
+    }
+    
+    /**
+     * Apply a single details page configuration field to the builder if valid
+     * 
+     * @param field The configuration field name
+     * @param valueMap The configuration value as a map
+     * @param builder The response builder to update
+     */
+    private void applyDetailsPageConfigurationField(String field, Map<String, Object> valueMap, 
+                                                DetailsPageConfigResponse.DetailsPageConfigResponseBuilder builder) {
+        switch (field) {
+            case "show_images":
+                builder.showImages(valueMap);
+                break;
+            case "show_description":
+                builder.showDescription(valueMap);
+                break;
+            case "show_amenities":
+                builder.showAmenities(valueMap);
+                break;
+            case "num_ammenities":
+                builder.numAmenities(valueMap);
+                break;
+            default:
+                log.warn("Unknown field in details page configuration: {}", field);
+                break;
+        }
+    }
+    
+    /**
+     * Set default values for details page configuration fields
+     * 
+     * @param builder The response builder to update with default values
+     */
+    private void setDefaultDetailsConfigValues(DetailsPageConfigResponse.DetailsPageConfigResponseBuilder builder) {
+        // Default values for show_images
+        Map<String, Object> showImagesDefaults = new HashMap<>();
+        showImagesDefaults.put("show", true);
+        showImagesDefaults.put("max_images", 2);
+        builder.showImages(showImagesDefaults);
+        
+        // Default values for show_description
+        Map<String, Object> showDescriptionDefaults = new HashMap<>();
+        showDescriptionDefaults.put("show", true);
+        builder.showDescription(showDescriptionDefaults);
+        
+        // Default values for show_amenities
+        Map<String, Object> showAmenitiesDefaults = new HashMap<>();
+        showAmenitiesDefaults.put("show", true);
+        builder.showAmenities(showAmenitiesDefaults);
+        
+        // Default values for num_amenities
+        Map<String, Object> numAmenitiesDefaults = new HashMap<>();
+        numAmenitiesDefaults.put("max", 2);
+        builder.numAmenities(numAmenitiesDefaults);
     }
 
     private TenantConfigurationResponse mapToResponse(TenantConfiguration configuration) {

@@ -1,6 +1,7 @@
 package com.kdu.rizzlers.service;
 
 import com.kdu.rizzlers.dto.in.TenantConfigurationRequest;
+import com.kdu.rizzlers.dto.out.DetailsPageConfigResponse;
 import com.kdu.rizzlers.dto.out.LandingPageConfigResponse;
 import com.kdu.rizzlers.dto.out.ResultsPageConfigResponse;
 import com.kdu.rizzlers.dto.out.TenantConfigurationResponse;
@@ -45,4 +46,12 @@ public interface TenantConfigurationService {
      * @return Results page configuration response
      */
     ResultsPageConfigResponse getResultsPageConfiguration(Integer tenantId, boolean fetchPropertyDetails);
+    
+    /**
+     * Get details page configuration for a specific tenant
+     *
+     * @param tenantId The tenant ID
+     * @return Details page configuration response
+     */
+    DetailsPageConfigResponse getDetailsPageConfiguration(Integer tenantId);
 } 
