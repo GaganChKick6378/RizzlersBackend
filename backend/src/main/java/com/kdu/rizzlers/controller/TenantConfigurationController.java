@@ -1,6 +1,7 @@
 package com.kdu.rizzlers.controller;
 
 import com.kdu.rizzlers.dto.in.TenantConfigurationRequest;
+import com.kdu.rizzlers.dto.out.CheckoutPageConfigResponse;
 import com.kdu.rizzlers.dto.out.LandingPageConfigResponse;
 import com.kdu.rizzlers.dto.out.ResultsPageConfigResponse;
 import com.kdu.rizzlers.dto.out.TenantConfigurationResponse;
@@ -172,5 +173,12 @@ public class TenantConfigurationController {
     public ResponseEntity<Void> deleteConfiguration(@PathVariable Long id) {
         tenantConfigurationService.deleteConfiguration(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/tenant/{tenantId}/checkout")
+    public ResponseEntity<CheckoutPageConfigResponse> getCheckoutPageConfiguration(@PathVariable Integer tenantId) {
+        log.info("REST request to get checkout page configuration for tenant: {}", tenantId);
+        CheckoutPageConfigResponse config = tenantConfigurationService.getCheckoutPageConfiguration(tenantId);
+        return ResponseEntity.ok(config);
     }
 } 

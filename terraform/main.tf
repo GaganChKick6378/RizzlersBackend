@@ -67,6 +67,8 @@ module "ecs" {
   load_balancer_listener_arn = module.alb.http_listener_arn
   graphql_endpoint = var.graphql_endpoint
   graphql_api_key = var.graphql_api_key
+  encryption_secret_key = var.encryption_secret_key
+  email_app_password = var.email_app_password
 }
 
 # Application Load Balancer
