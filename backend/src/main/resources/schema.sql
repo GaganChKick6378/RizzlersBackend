@@ -5,6 +5,7 @@ DROP TABLE IF EXISTS property_promotion_schedule;
 DROP TABLE IF EXISTS tenant_property_assignment;
 DROP TABLE IF EXISTS tenant_configuration;
 DROP TABLE IF EXISTS students;
+DROP TABLE IF EXISTS property_configuration;
 
 -- Tenant-specific configuration table
 CREATE TABLE IF NOT EXISTS tenant_configuration (
@@ -72,6 +73,34 @@ CREATE TABLE IF NOT EXISTS guest_type_definition (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Property Configuration table
+CREATE TABLE IF NOT EXISTS property_configuration (
+    id BIGSERIAL PRIMARY KEY,
+    property_id INTEGER NOT NULL,
+    contact_number VARCHAR(50) NOT NULL,
+    availability TEXT NOT NULL,
+    country VARCHAR(100) NOT NULL,
+    tax DECIMAL(10,2) NOT NULL,
+    surcharge DECIMAL(5,2) NOT NULL, -- Percentage value
+    fees DECIMAL(10,2) NOT NULL, -- Numeric value
+    terms_and_conditions TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE booking_locks (
+    id SERIAL PRIMARY KEY, 
+    room_id INTEGER NOT NULL, 
+    property_id INTEGER NOT NULL, 
+    start_date DATE NOT NULL, 
+    end_date DATE NOT NULL, 
+    lock_timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, 
+    lock_expiry TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP + INTERVAL '15 minutes', 
+    lock_owner VARCHAR(255), 
+    status VARCHAR(50) DEFAULT 'PENDING', 
+    CONSTRAINT unique_booking_lock UNIQUE (room_id, start_date, end_date)
+);
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_tenant_configuration_tenant_id ON tenant_configuration(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_tenant_configuration_page ON tenant_configuration(page);
@@ -91,3 +120,8 @@ CREATE INDEX IF NOT EXISTS idx_room_type_images_property_id ON room_type_images(
 
 CREATE INDEX IF NOT EXISTS idx_guest_type_tenant_id ON guest_type_definition(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_guest_type_is_active ON guest_type_definition(is_active);
+
+-- Create indexes for the property_configuration table
+CREATE INDEX IF NOT EXISTS idx_property_configuration_property_id ON property_configuration(property_id);
+CREATE INDEX IF NOT EXISTS idx_property_configuration_country ON property_configuration(country);
+CREATE INDEX IF NOT EXISTS idx_property_configuration_is_active ON property_configuration(is_active);

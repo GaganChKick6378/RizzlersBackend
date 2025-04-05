@@ -1,13 +1,7 @@
 package com.kdu.rizzlers.service.impl;
 
 import com.kdu.rizzlers.dto.in.TenantConfigurationRequest;
-import com.kdu.rizzlers.dto.out.DetailsPageConfigResponse;
-import com.kdu.rizzlers.dto.out.GuestTypeDefinitionResponse;
-import com.kdu.rizzlers.dto.out.LandingPageConfigResponse;
-import com.kdu.rizzlers.dto.out.PropertyResponse;
-import com.kdu.rizzlers.dto.out.ResultsPageConfigResponse;
-import com.kdu.rizzlers.dto.out.TenantConfigurationResponse;
-import com.kdu.rizzlers.dto.out.TenantPropertyAssignmentResponse;
+import com.kdu.rizzlers.dto.out.*;
 import com.kdu.rizzlers.entity.TenantConfiguration;
 import com.kdu.rizzlers.exception.ResourceNotFoundException;
 import com.kdu.rizzlers.repository.TenantConfigurationRepository;
@@ -521,6 +515,55 @@ public class TenantConfigurationServiceImpl implements TenantConfigurationServic
         Map<String, Object> numAmenitiesDefaults = new HashMap<>();
         numAmenitiesDefaults.put("max", 2);
         builder.numAmenities(numAmenitiesDefaults);
+    }
+
+    @Override
+    public CheckoutPageConfigResponse getCheckoutPageConfiguration(Integer tenantId) {
+        log.info("Getting checkout page configuration for tenant: {}", tenantId);
+        
+        // Get configurations from the database
+        List<TenantConfiguration> configurations = tenantConfigurationRepository.findByTenantIdAndPageAndIsActive(
+                tenantId, "checkout", true);
+        
+        log.debug("Found {} active configurations for tenant: {} in checkout page", configurations.size(), tenantId);
+        
+        // Create response builder
+        CheckoutPageConfigResponse.CheckoutPageConfigResponseBuilder builder = CheckoutPageConfigResponse.builder()
+                .tenantId(tenantId)
+                .page("checkout");
+        
+        // Process each configuration
+        for (TenantConfiguration config : configurations) {
+            try {
+                // Parse JSON string to Map
+                Map<String, Object> valueMap = JsonUtil.jsonToMap(config.getValue());
+                
+                // Make sure enabled flag is present
+                if (!valueMap.containsKey("enabled")) {
+                    valueMap.put("enabled", true);
+                }
+                
+                // Apply configuration based on field name
+                switch (config.getField()) {
+                    case "traveler_info":
+                        builder.travelerInfo(valueMap);
+                        break;
+                    case "billing_info":
+                        builder.billingInfo(valueMap);
+                        break;
+                    case "payment_info":
+                        builder.paymentInfo(valueMap);
+                        break;
+                    default:
+                        log.warn("Unknown checkout configuration field: {}", config.getField());
+                        break;
+                }
+            } catch (Exception ex) {
+                log.error("Failed to process checkout configuration with field: {}", config.getField(), ex);
+            }
+        }
+        
+        return builder.build();
     }
 
     private TenantConfigurationResponse mapToResponse(TenantConfiguration configuration) {

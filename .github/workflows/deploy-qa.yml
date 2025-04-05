@@ -69,6 +69,14 @@ jobs:
           database_username  = "${{ secrets.DB_USERNAME }}"
           database_password  = "${{ secrets.DB_PASSWORD }}"
 
+          # GraphQL configuration
+          graphql_endpoint = "${{ secrets.GRAPHQL_ENDPOINT }}"
+          graphql_api_key  = "${{ secrets.GRAPHQL_API_KEY }}"
+
+          # Security and Email configuration
+          encryption_secret_key = "${{ secrets.ENCRYPTION_SECRET_KEY }}"
+          email_app_password = "${{ secrets.EMAIL_APP_PASSWORD }}"
+
           # VPC and networking
           vpc_name          = "KDU-25-VPC"
           public_subnet_ids  = ${{ secrets.TF_VAR_PUBLIC_SUBNET_IDS }}
@@ -170,6 +178,8 @@ jobs:
             --build-arg container_port="8080" \
             --build-arg allowed_origins="http://localhost:3000,https://d327h6huibdsc6.cloudfront.net/,chrome-extension://gmehhhfompinmcoabokhckceachkjmha" \
             --build-arg ENV="qa" \
+            --build-arg encryption_secret_key="${{ secrets.ENCRYPTION_SECRET_KEY }}" \
+            --build-arg email_app_password="${{ secrets.EMAIL_APP_PASSWORD }}" \
             .
           docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
           docker tag $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
