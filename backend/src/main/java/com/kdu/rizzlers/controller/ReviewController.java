@@ -27,7 +27,7 @@ public class ReviewController {
     private final ReviewInvitationService reviewInvitationService;
     private final GuestReviewService guestReviewService;
     
-    @Value("${frontend.review-url:http://localhost:3000/review}")
+    @Value("${frontend.review-url}")
     private String frontendReviewUrl;
 
     @Autowired
