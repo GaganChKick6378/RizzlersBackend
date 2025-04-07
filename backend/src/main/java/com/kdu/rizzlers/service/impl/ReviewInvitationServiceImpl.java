@@ -52,7 +52,7 @@ public class ReviewInvitationServiceImpl implements ReviewInvitationService {
     @Value("${graphql.api-key-header}")
     private String apiKeyHeader;
 
-    @Value("${frontend.review-url:http://localhost:3000/review}")
+    @Value("${frontend.review-url}")
     private String frontendReviewUrl;
 
     @Autowired
