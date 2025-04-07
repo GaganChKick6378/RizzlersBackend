@@ -39,7 +39,7 @@ public class PromoCodeController {
         List<PromoCodeResponse> visiblePromotions = promoCodeService.getAllVisiblePromotions()
                 .stream()
                 .map(promotion -> PromoCodeResponse.builder()
-                        .promotionId(promotion.getPromotionId())
+                        .promotionId(promotion.getPromotionId() * 1000 + 2) // Apply RDS identifier suffix
                         .title(promotion.getTitle())
                         .description(promotion.getDescription())
                         .priceFactor(promotion.getPriceFactor())
@@ -61,6 +61,8 @@ public class PromoCodeController {
         
         return promoCodeService.validatePromoCode(promoCode)
                 .map(response -> {
+                    // Transform the promotionId to include RDS identifier (multiply by 1000 and add 2)
+                    response.setPromotionId(response.getPromotionId() * 1000 + 2);
                     // Return full response
                     return ResponseEntity.ok().body((Object) response);
                 })
@@ -85,8 +87,9 @@ public class PromoCodeController {
         return promoCodeService.validatePromoCode(request.getPromoCode())
                 .map(response -> {
                     // Create simplified response with only requested fields
+                    // Apply RDS identifier transformation to promotion ID
                     PromoCodeResponse simplifiedResponse = PromoCodeResponse.builder()
-                            .promotionId(response.getPromotionId())
+                            .promotionId(response.getPromotionId() * 1000 + 2) // Apply RDS identifier suffix
                             .title(response.getTitle())
                             .description(response.getDescription())
                             .priceFactor(response.getPriceFactor())

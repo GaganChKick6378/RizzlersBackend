@@ -12,6 +12,10 @@ import java.time.ZonedDateTime;
 /**
  * Entity representing a booking lock to prevent concurrent bookings
  * of the same room for the same date range.
+ * 
+ * This entity is protected by a PostgreSQL exclusion constraint that
+ * prevents overlapping date ranges for the same room_id when the status is
+ * either PENDING or CONFIRMED.
  */
 @Entity
 @Table(name = "booking_locks", uniqueConstraints = {
@@ -64,6 +68,14 @@ public class BookingLock {
     
     @Column(name = "server_id", length = 100)
     private String serverId;
+    
+    /**
+     * Version field for optimistic locking.
+     * Used to detect and prevent conflicts between concurrent transactions.
+     */
+    @Version
+    @Column(name = "version")
+    private Long version;
 
     /**
      * Checks if the lock is expired

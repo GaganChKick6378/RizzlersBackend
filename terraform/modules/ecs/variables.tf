@@ -95,4 +95,9 @@ variable "email_app_password" {
   description = "App password for email service"
   type        = string
   sensitive   = true
+}
+
+variable "frontend_review_url" {
+  description = "Frontend URL for review page"
+  type        = string
 } 

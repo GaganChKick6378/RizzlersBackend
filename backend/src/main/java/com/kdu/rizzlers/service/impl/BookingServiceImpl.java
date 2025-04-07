@@ -8,16 +8,20 @@ import com.kdu.rizzlers.entity.PropertyPromotion;
 import com.kdu.rizzlers.entity.User;
 import com.kdu.rizzlers.entity.BillingInfo;
 import com.kdu.rizzlers.entity.PaymentInfo;
+import com.kdu.rizzlers.entity.UserBooking;
 import com.kdu.rizzlers.repository.BookingLockRepository;
 import com.kdu.rizzlers.repository.PropertyPromotionRepository;
 import com.kdu.rizzlers.repository.UserRepository;
 import com.kdu.rizzlers.repository.BillingInfoRepository;
 import com.kdu.rizzlers.repository.PaymentInfoRepository;
+import com.kdu.rizzlers.repository.UserBookingRepository;
 import com.kdu.rizzlers.service.BookingService;
 import com.kdu.rizzlers.service.PropertyConfigurationService;
 import com.kdu.rizzlers.service.PromotionGraphQLService;
 import com.kdu.rizzlers.service.RoomAvailabilityCheckService;
 import com.kdu.rizzlers.service.RoomDailyRatesService;
+import com.kdu.rizzlers.service.RoomAvailabilityStatusService;
+import com.kdu.rizzlers.dto.in.RoomAvailabilityStatusRequestDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
@@ -29,6 +33,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -38,6 +43,12 @@ import java.util.stream.Collectors;
 import java.util.HashMap;
 
 import com.kdu.rizzlers.util.EncryptionUtil;
+import com.kdu.rizzlers.exception.OverlappingBookingException;
+import org.postgresql.util.PSQLException;
+import com.kdu.rizzlers.service.EmailService;
+import com.kdu.rizzlers.service.BookingConfirmationService;
+import com.kdu.rizzlers.dto.in.BookingConfirmationRequest;
+import com.kdu.rizzlers.dto.out.BookingConfirmationDetailsResponse;
 
 /**
  * Implementation of BookingService interface handling room booking operations
@@ -59,6 +70,10 @@ public class BookingServiceImpl implements BookingService {
     private final BillingInfoRepository billingInfoRepository;
     private final PaymentInfoRepository paymentInfoRepository;
     private final EncryptionUtil encryptionUtil;
+    private final UserBookingRepository userBookingRepository;
+    private final RoomAvailabilityStatusService roomAvailabilityStatusService;
+    private final EmailService emailService;
+    private final BookingConfirmationService bookingConfirmationService;
     
     private static final int LOCK_EXPIRY_MINUTES = 15;
     private static final String GRAPHQL_SOURCE_POSTFIX = "1";
@@ -79,7 +94,11 @@ public class BookingServiceImpl implements BookingService {
             PromotionGraphQLService promotionGraphQLService,
             BillingInfoRepository billingInfoRepository,
             PaymentInfoRepository paymentInfoRepository,
-            EncryptionUtil encryptionUtil) {
+            EncryptionUtil encryptionUtil,
+            UserBookingRepository userBookingRepository,
+            RoomAvailabilityStatusService roomAvailabilityStatusService,
+            EmailService emailService,
+            BookingConfirmationService bookingConfirmationService) {
         
         this.bookingLockRepository = bookingLockRepository;
         this.roomAvailabilityCheckService = roomAvailabilityCheckService;
@@ -92,6 +111,10 @@ public class BookingServiceImpl implements BookingService {
         this.billingInfoRepository = billingInfoRepository;
         this.paymentInfoRepository = paymentInfoRepository;
         this.encryptionUtil = encryptionUtil;
+        this.userBookingRepository = userBookingRepository;
+        this.roomAvailabilityStatusService = roomAvailabilityStatusService;
+        this.emailService = emailService;
+        this.bookingConfirmationService = bookingConfirmationService;
         
         this.webClient = webClientBuilder
                 .baseUrl(graphqlEndpoint)
@@ -113,15 +136,7 @@ public class BookingServiceImpl implements BookingService {
                     bookingRequest.getStartDate(), bookingRequest.getEndDate(),
                     bookingRequest.getRoomCount());
             
-            // Step 1: Clean up expired locks
-            try {
-                cleanupExpiredLocks();
-            } catch (Exception e) {
-                log.warn("Error cleaning up expired locks: {}", e.getMessage());
-                // Continue with booking process even if cleanup fails
-            }
-            
-            // Step 2: Check if rooms of the requested type are available
+            // Step 1: Check if rooms of the requested type are available
             Map<String, Object> availabilityResult;
             try {
                 availabilityResult = roomAvailabilityCheckService.checkRoomTypeAvailability(
@@ -142,7 +157,7 @@ public class BookingServiceImpl implements BookingService {
                 return BookingResponse.failure("No rooms available for the selected dates and property");
             }
             
-            // Step 3: Get available room IDs
+            // Step 2: Get available room IDs
             @SuppressWarnings("unchecked")
             List<Integer> availableRoomIds = (List<Integer>) availabilityResult.get("availableRoomIds");
             if (availableRoomIds == null || availableRoomIds.isEmpty()) {
@@ -150,14 +165,23 @@ public class BookingServiceImpl implements BookingService {
                 return BookingResponse.failure("No available rooms found");
             }
             
-            // Step 4: Filter rooms that are currently locked
+            // Step 3: Filter rooms that are currently locked
             List<Integer> unlocked;
             try {
+                // Check if start and end dates are the same for a single day booking
+                LocalDate effectiveEndDate = bookingRequest.getEndDate();
+                boolean isSingleDayBooking = bookingRequest.getStartDate().equals(bookingRequest.getEndDate());
+                
+                if (!isSingleDayBooking) {
+                    // Normal case: exclude checkout date from booking period
+                    effectiveEndDate = effectiveEndDate.minusDays(1);
+                }
+                
                 unlocked = filterLockedRooms(
                         availableRoomIds,
                         bookingRequest.getPropertyId(),
                         bookingRequest.getStartDate(),
-                        bookingRequest.getEndDate().minusDays(1)); // Exclude checkout date from booking period
+                        effectiveEndDate);
             } catch (Exception e) {
                 log.error("Error filtering locked rooms: {}", e.getMessage(), e);
                 return BookingResponse.failure("Error filtering locked rooms: " + e.getMessage());
@@ -175,21 +199,33 @@ public class BookingServiceImpl implements BookingService {
                 return BookingResponse.failure("Not enough rooms available for the selected dates. Please try with fewer rooms or a different date range.");
             }
             
+            // Shuffle the list of available rooms to avoid always selecting the same ones
+            Collections.shuffle(unlocked);
+            
             // Only take the number of rooms requested
             List<Integer> roomsToBook = unlocked.subList(0, roomCount);
             log.info("Selected {} rooms for booking: {}", roomCount, roomsToBook);
             
-            // Step 5: First, acquire locks for all rooms
+            // Step 4: First, acquire locks for all rooms
             List<Integer> lockedRoomIds = new ArrayList<>();
             
             String sessionId = UUID.randomUUID().toString();
             for (Integer roomId : roomsToBook) {
                 try {
+                    // Check if start and end dates are the same for a single day booking
+                    LocalDate effectiveEndDate = bookingRequest.getEndDate();
+                    boolean isSingleDayBooking = bookingRequest.getStartDate().equals(bookingRequest.getEndDate());
+                    
+                    if (!isSingleDayBooking) {
+                        // Normal case: exclude checkout date from booking period
+                        effectiveEndDate = effectiveEndDate.minusDays(1);
+                    }
+                    
                     Optional<BookingLock> acquiredLock = acquireRoomLock(
                             roomId,
                             bookingRequest.getPropertyId(),
                             bookingRequest.getStartDate(),
-                            bookingRequest.getEndDate().minusDays(1), // Exclude checkout date from booking period
+                            effectiveEndDate,
                             sessionId);
                     
                     if (acquiredLock.isEmpty()) {
@@ -200,6 +236,11 @@ public class BookingServiceImpl implements BookingService {
                     acquiredLocks.add(acquiredLock.get());
                     lockedRoomIds.add(roomId);
                     log.info("Successfully acquired lock for roomId={}", roomId);
+                } catch (OverlappingBookingException e) {
+                    log.warn("Overlapping booking detected for room {}: {}", roomId, e.getMessage());
+                    // Release any locks already acquired
+                    releaseAcquiredLocks(acquiredLocks);
+                    return BookingResponse.failure("Room " + roomId + " is already booked for the selected dates. Please choose different dates or a different room type.");
                 } catch (Exception e) {
                     log.error("Error acquiring lock for room {}: {}", roomId, e.getMessage());
                     // Continue with other rooms
@@ -211,7 +252,7 @@ public class BookingServiceImpl implements BookingService {
                 return BookingResponse.failure("Failed to acquire locks for any rooms. Please try again later.");
             }
             
-            // Step 6: Create a single booking for all rooms
+            // Step 5: Create a single booking for all rooms
             Integer guestId = null;
             try {
                 // Create the guest in GraphQL
@@ -241,12 +282,21 @@ public class BookingServiceImpl implements BookingService {
                     BookingLock lock = acquiredLocks.get(i);
                     
                     try {
+                        // Check if start and end dates are the same for a single day booking
+                        LocalDate effectiveEndDate = bookingRequest.getEndDate();
+                        boolean isSingleDayBooking = bookingRequest.getStartDate().equals(bookingRequest.getEndDate());
+                        
+                        if (!isSingleDayBooking) {
+                            // Normal case: exclude checkout date from booking period
+                            effectiveEndDate = effectiveEndDate.minusDays(1);
+                        }
+                        
                         boolean availabilitiesUpdated = updateRoomAvailabilities(
                                 bookingId,
                                 roomId,
                                 bookingRequest.getPropertyId(),
                                 bookingRequest.getStartDate(),
-                                bookingRequest.getEndDate().minusDays(1)); // Exclude checkout date from booking period
+                                effectiveEndDate);
                         
                         if (availabilitiesUpdated) {
                             successfullyBookedRoomIds.add(roomId);
@@ -258,8 +308,20 @@ public class BookingServiceImpl implements BookingService {
                     }
                 }
                 
-                // Clean up all locks in a new transaction to avoid rollback issues
-                cleanupLocks(acquiredLocks);
+                // Associate locks with the booking instead of cleaning them up
+                // They will be cleaned up by the scheduled task when they expire
+                for (BookingLock lock : acquiredLocks) {
+                    try {
+                        // Update the lock with the booking ID and change status to CONFIRMED
+                        lock.setBookingId(bookingId);
+                        lock.setStatus(BookingLock.BookingLockStatus.CONFIRMED);
+                        lock.setStatusUpdatedAt(ZonedDateTime.now());
+                        bookingLockRepository.save(lock);
+                        log.info("Associated lock ID {} with booking ID {}", lock.getId(), bookingId);
+                    } catch (Exception e) {
+                        log.error("Error associating lock with booking: {}", e.getMessage(), e);
+                    }
+                }
                 
                 if (successfullyBookedRoomIds.isEmpty()) {
                     log.error("Failed to associate any rooms with booking {}", bookingId);
@@ -288,24 +350,61 @@ public class BookingServiceImpl implements BookingService {
                 response.setAllBookingIds(Collections.singletonList(bookingId)); // Only one booking ID now
                 response.setTotalRoomsBooked(successfullyBookedRoomIds.size());
                 
+                // Send booking confirmation email
+                try {
+                    // Get email address from billing info
+                    String email = bookingRequest.getBillingInfo().getEmail();
+                    if (email != null && !email.isEmpty()) {
+                        // Create a booking confirmation request
+                        BookingConfirmationRequest confirmationRequest = new BookingConfirmationRequest(
+                                bookingId, 
+                                guestId);
+                        
+                        // Get booking details using the BookingConfirmationService
+                        BookingConfirmationDetailsResponse bookingDetails = 
+                                bookingConfirmationService.getBookingConfirmationDetails(confirmationRequest);
+                        
+                        if (bookingDetails != null && bookingDetails.getSuccess() != null && bookingDetails.getSuccess()) {
+                            // Send the email
+                            boolean emailSent = emailService.sendTravelItineraryEmail(bookingDetails, email);
+                            if (emailSent) {
+                                log.info("Booking confirmation email sent successfully to {} for booking ID {}", 
+                                        email, bookingId);
+                            } else {
+                                log.warn("Failed to send booking confirmation email to {} for booking ID {}", 
+                                        email, bookingId);
+                            }
+                        } else {
+                            log.warn("Could not get booking details for email confirmation. Booking ID: {}", bookingId);
+                        }
+                    } else {
+                        log.warn("No email address available for sending booking confirmation. Booking ID: {}", bookingId);
+                    }
+                } catch (Exception e) {
+                    log.error("Error sending booking confirmation email: {}", e.getMessage(), e);
+                    // Continue with the booking process even if sending email fails
+                }
+                
                 return response;
                 
             } catch (Exception e) {
                 log.error("Error during booking process: {}", e.getMessage(), e);
                 
                 // Clean up all locks in a new transaction to avoid rollback issues
-                cleanupLocks(acquiredLocks);
+                // For errors, we still clean up locks immediately
+                releaseLocks(acquiredLocks);
                 
                 return BookingResponse.failure("Booking failed: " + e.getMessage());
             }
             
+        } catch (OverlappingBookingException e) {
+            log.warn("Overlapping booking detected: {}", e.getMessage());
+            releaseAcquiredLocks(acquiredLocks);
+            return BookingResponse.failure("One or more rooms are already booked for the selected dates. Please choose different dates or a different room type.");
         } catch (Exception e) {
-            log.error("Unexpected error during booking process: {}", e.getMessage(), e);
-            
-            // Clean up all locks in a new transaction to avoid rollback issues
-            cleanupLocks(acquiredLocks);
-            
-            return BookingResponse.failure("An unexpected error occurred. Please try again later.");
+            log.error("Error in booking process: {}", e.getMessage(), e);
+            releaseAcquiredLocks(acquiredLocks);
+            return BookingResponse.failure("Booking failed: " + e.getMessage());
         }
     }
 
@@ -318,19 +417,24 @@ public class BookingServiceImpl implements BookingService {
             LocalDate endDate,
             String sessionId) {
         
+        // With optimistic locking, even if the booking_locks table is empty, 
+        // we can still safely create a new lock. The version field will be initialized to 0.
+        // The version field only comes into play when multiple transactions try to modify
+        // the SAME lock record - in which case, the version check will fail for all but the first transaction.
+        
         try {
-            // Check if there's already a lock for this room and dates - use a separate query to avoid flushing issues
-            Long existingLockCount = bookingLockRepository.count(
-                    (root, query, builder) -> 
-                        builder.and(
-                            builder.equal(root.get("roomId"), roomId),
-                            builder.equal(root.get("startDate"), startDate),
-                            builder.equal(root.get("endDate"), endDate),
-                            builder.equal(root.get("status"), BookingLock.BookingLockStatus.PENDING)
-                        )
-            );
+            // Ensure start date and end date are not the same to prevent PostgreSQL range error
+            if (startDate.equals(endDate)) {
+                // If they're the same, add one day to end date
+                endDate = endDate.plusDays(1);
+                log.info("Start and end dates are the same. Adjusted end date to {} for room lock creation", endDate);
+            }
             
-            if (existingLockCount > 0) {
+            // First check if a lock already exists (nonexclusive read)
+            Optional<BookingLock> existingLock = bookingLockRepository.findByRoomIdAndStartDateAndEndDateAndStatus(
+                    roomId, startDate, endDate, BookingLock.BookingLockStatus.PENDING);
+            
+            if (existingLock.isPresent()) {
                 log.info("Room {} already has a pending lock for the requested dates", roomId);
                 return Optional.empty();
             }
@@ -349,23 +453,40 @@ public class BookingServiceImpl implements BookingService {
                     .statusUpdatedAt(ZonedDateTime.now())
                     .build();
             
-            // Save the lock with a unique constraint that will fail if another lock was created in the meantime
             try {
                 lock = bookingLockRepository.save(lock);
-                bookingLockRepository.flush(); // Explicitly flush to ensure the ID is generated
+                bookingLockRepository.flush(); // Flush to ensure the constraint is checked
+                
                 log.info("Lock acquired by server {} for room {}, dates {} to {}", 
                         serverId, roomId, startDate, endDate);
                 return Optional.of(lock);
+                
             } catch (org.springframework.dao.DataIntegrityViolationException e) {
-                // This is expected if another transaction already created a lock
+                // Check if this is an exclusion constraint violation (overlapping date range)
+                Throwable cause = e.getCause();
+                if (cause != null && cause.getCause() instanceof PSQLException) {
+                    PSQLException psqlException = (PSQLException) cause.getCause();
+                    String sqlState = psqlException.getSQLState();
+                    String message = psqlException.getMessage();
+                    
+                    // Check for exclusion constraint violation (SQL state 23P01)
+                    if ("23P01".equals(sqlState) || message.contains("no_overlapping_bookings")) {
+                        log.warn("Overlapping booking detected for room {}, dates {} to {}", 
+                                roomId, startDate, endDate);
+                        throw new OverlappingBookingException("This room is already booked for the selected dates",
+                                roomId, startDate.toString(), endDate.toString());
+                    }
+                }
+                
+                // Another transaction created the lock first - expected in concurrent scenarios
                 log.info("Concurrent lock attempt for room {}: {}", roomId, e.getMessage());
                 return Optional.empty();
-            } catch (Exception e) {
-                log.warn("Failed to acquire lock for room {}: {}", roomId, e.getMessage());
-                return Optional.empty();
             }
+        } catch (OverlappingBookingException e) {
+            // Rethrow the exception for proper handling at the controller level
+            throw e;
         } catch (Exception e) {
-            log.error("Error acquiring room lock: {}", e.getMessage(), e);
+            log.warn("Failed to acquire lock for room {}: {}", roomId, e.getMessage());
             return Optional.empty();
         }
     }
@@ -373,15 +494,48 @@ public class BookingServiceImpl implements BookingService {
     @Override
     @Transactional
     public boolean releaseRoomLock(Long lockId) {
-        try {
-            // Delete the lock instead of updating the status
-            bookingLockRepository.deleteById(lockId);
-            log.info("Deleted booking lock with ID: {}", lockId);
-            return true;
-        } catch (Exception e) {
-            log.error("Error releasing room lock: {}", e.getMessage(), e);
-            return false;
+        int maxRetries = 3;
+        int currentRetry = 0;
+        
+        while (currentRetry < maxRetries) {
+            try {
+                // Find the lock to release
+                Optional<BookingLock> lockOpt = bookingLockRepository.findById(lockId);
+                if (lockOpt.isEmpty()) {
+                    log.warn("Lock with ID {} not found, cannot release", lockId);
+                    return false;
+                }
+                
+                // Delete the lock
+                bookingLockRepository.deleteById(lockId);
+                log.info("Deleted booking lock with ID: {}", lockId);
+                return true;
+                
+            } catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
+                // Optimistic locking exception - the lock was updated by another transaction
+                currentRetry++;
+                log.info("Optimistic lock failure when releasing lock {}, retry {}/{}", lockId, currentRetry, maxRetries);
+                
+                if (currentRetry >= maxRetries) {
+                    log.warn("Max retries reached for releasing lock {}", lockId);
+                    return false;
+                }
+                
+                // Brief delay before retry
+                try {
+                    Thread.sleep(100 * currentRetry);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+                
+            } catch (Exception e) {
+                log.error("Error releasing room lock: {}", e.getMessage(), e);
+                return false;
+            }
         }
+        
+        return false;
     }
 
     @Override
@@ -421,9 +575,36 @@ public class BookingServiceImpl implements BookingService {
     @Transactional
     public int cleanupExpiredLocks() {
         try {
-            // Delete expired locks instead of updating their status
             ZonedDateTime now = ZonedDateTime.now();
-            return bookingLockRepository.deleteExpiredLocks(now);
+            
+            // First, find all expired locks
+            List<BookingLock> expiredLocks = bookingLockRepository.findExpiredLocks(now);
+            if (expiredLocks.isEmpty()) {
+                return 0;
+            }
+            
+            log.info("Found {} expired locks to clean up", expiredLocks.size());
+            int successCount = 0;
+            
+            // Process each expired lock individually to handle optimistic locking
+            for (BookingLock lock : expiredLocks) {
+                try {
+                    // Update the status to EXPIRED instead of deleting to keep history
+                    lock.setStatus(BookingLock.BookingLockStatus.EXPIRED);
+                    lock.setStatusUpdatedAt(now);
+                    bookingLockRepository.save(lock);
+                    successCount++;
+                } catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
+                    log.info("Optimistic lock failure when updating expired lock {}: {}", 
+                            lock.getId(), e.getMessage());
+                    // This is expected in concurrent scenarios, so we don't count it as an error
+                } catch (Exception e) {
+                    log.error("Error updating expired lock {}: {}", lock.getId(), e.getMessage());
+                }
+            }
+            
+            log.info("Successfully updated {} expired locks", successCount);
+            return successCount;
         } catch (Exception e) {
             log.error("Error cleaning up expired locks: {}", e.getMessage(), e);
             return 0;
@@ -823,7 +1004,22 @@ public class BookingServiceImpl implements BookingService {
                 .block();
                 
             if (result != null && result.containsKey("booking_id")) {
-                return Optional.of((Integer) result.get("booking_id"));
+                Integer bookingId = (Integer) result.get("booking_id");
+                
+                // Find the user ID from RDS based on guest ID
+                UUID userId = null;
+                try {
+                    Optional<User> userOpt = userRepository.findByGuestId(guestId);
+                    if (userOpt.isPresent()) {
+                        userId = userOpt.get().getId();
+                    }
+                } catch (Exception e) {
+                    log.warn("Error finding user by guestId: {}", e.getMessage());
+                }
+                
+                // We removed the saveBookingDetailsToRds call here to avoid duplicates
+                
+                return Optional.of(bookingId);
             }
             
             log.error("Failed to create booking: No booking_id in response");
@@ -1258,11 +1454,23 @@ public class BookingServiceImpl implements BookingService {
                 request.getRoomCount(),
                 request.getPromotionId());
         
+        // Find the user ID from RDS based on guest ID
+        UUID userId = null;
+        try {
+            Optional<User> userOpt = userRepository.findByGuestId(guestId);
+            if (userOpt.isPresent()) {
+                userId = userOpt.get().getId();
+            }
+        } catch (Exception e) {
+            log.warn("Error finding user by guestId: {}", e.getMessage());
+        }
+        
+        // Save the booking details to RDS
+        saveBookingDetailsToRds(bookingId, request, priceResult, guestId, userId);
+        
         // Calculate adjusted guest counts
         Map<String, Integer> adjustedGuestCount = calculateAdjustedGuestCount(request.getGuestCount());
         
-        // Note: These are the full price values, different from what may be sent to GraphQL 
-        // due to INT2 limitations in GraphQL schema
         log.info("Building success response with full price values: totalCost={}, amountDueAtResort={} " +
                 "(Note: GraphQL may store different values due to INT2 limitations)", 
                 priceResult.getFinalTotal(), priceResult.getDueAtResort());
@@ -1300,22 +1508,65 @@ public class BookingServiceImpl implements BookingService {
     }
     
     /**
-     * Delete all locks in a new transaction to avoid rollback issues
+     * Release all locks in a new transaction to avoid rollback issues
+     * Used for error cases to immediately release locks
      * 
-     * @param locks the list of locks to delete
+     * @param locks the list of locks to release
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
-    public void cleanupLocks(List<BookingLock> locks) {
+    public void releaseLocks(List<BookingLock> locks) {
         if (locks == null || locks.isEmpty()) {
             return;
         }
         
-        log.info("Cleaning up {} locks", locks.size());
+        log.info("Releasing {} locks due to error", locks.size());
         for (BookingLock lock : locks) {
-            try {
-                bookingLockRepository.delete(lock);
-            } catch (Exception e) {
-                log.error("Error deleting lock ID {}: {}", lock.getId(), e.getMessage());
+            int retryCount = 0;
+            int maxRetries = 3;
+            boolean released = false;
+            
+            while (!released && retryCount < maxRetries) {
+                try {
+                    // Change status to RELEASED instead of deleting
+                    lock.setStatus(BookingLock.BookingLockStatus.RELEASED);
+                    lock.setStatusUpdatedAt(ZonedDateTime.now());
+                    bookingLockRepository.save(lock);
+                    released = true;
+                    log.info("Released lock ID {}", lock.getId());
+                } catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
+                    retryCount++;
+                    log.info("Optimistic lock failure when releasing lock {}, retry {}/{}", 
+                            lock.getId(), retryCount, maxRetries);
+                    
+                    if (retryCount >= maxRetries) {
+                        log.warn("Max retries reached for releasing lock {}", lock.getId());
+                        break;
+                    }
+                    
+                    // Reload the lock before retrying
+                    try {
+                        Optional<BookingLock> refreshedLock = bookingLockRepository.findById(lock.getId());
+                        if (refreshedLock.isPresent()) {
+                            lock = refreshedLock.get();
+                        } else {
+                            // Lock was already deleted/released
+                            released = true;
+                            break;
+                        }
+                        
+                        // Brief delay before retry
+                        Thread.sleep(100 * retryCount);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    } catch (Exception reloadEx) {
+                        log.error("Error reloading lock ID {}: {}", lock.getId(), reloadEx.getMessage());
+                        break;
+                    }
+                } catch (Exception e) {
+                    log.error("Error releasing lock ID {}: {}", lock.getId(), e.getMessage());
+                    break;
+                }
             }
         }
     }
@@ -1434,6 +1685,146 @@ public class BookingServiceImpl implements BookingService {
         } catch (Exception e) {
             log.error("Error retrieving payment information: {}", e.getMessage(), e);
             return Optional.empty();
+        }
+    }
+
+    /**
+     * Save booking details to RDS in the user_booking table
+     * 
+     * @param bookingId the booking ID
+     * @param bookingRequest the booking request
+     * @param priceResult the price calculation result
+     * @param guestId the guest ID
+     * @param userId the user ID (optional)
+     */
+    private void saveBookingDetailsToRds(
+            Integer bookingId, 
+            BookingRequest bookingRequest, 
+            PriceCalculationResult priceResult,
+            Integer guestId,
+            UUID userId) {
+        
+        try {
+            // Get detailed pricing information using RoomAvailabilityStatusService
+            RoomAvailabilityStatusRequestDTO availabilityRequest = RoomAvailabilityStatusRequestDTO.builder()
+                    .propertyId(bookingRequest.getPropertyId())
+                    .roomTypeId(bookingRequest.getRoomTypeId())
+                    .startDate(bookingRequest.getStartDate())
+                    .endDate(bookingRequest.getEndDate())
+                    .roomCount(bookingRequest.getRoomCount())
+                    .guestCount(bookingRequest.getGuestCount())
+                    .build();
+            
+            // Get detailed pricing with promotion if provided
+            Integer promotionId = bookingRequest.getPromotionId();
+            
+            // Calculate the nightly rate (average of daily prices)
+            Map<LocalDate, Double> dailyPrices = dailyRatesService.fetchDailyRoomTypePrices(
+                    bookingRequest.getRoomTypeId(),
+                    bookingRequest.getStartDate(),
+                    bookingRequest.getEndDate());
+            
+            BigDecimal nightlyRate = BigDecimal.ZERO;
+            if (!dailyPrices.isEmpty()) {
+                double totalPrice = dailyPrices.values().stream().mapToDouble(Double::doubleValue).sum();
+                double averagePrice = totalPrice / dailyPrices.size();
+                nightlyRate = BigDecimal.valueOf(averagePrice).setScale(2, RoundingMode.HALF_UP);
+            }
+            
+            // Calculate subtotal (totalPrice)
+            BigDecimal subtotal = BigDecimal.valueOf(
+                    dailyRatesService.calculateTotalPrice(dailyPrices, bookingRequest.getRoomCount()))
+                    .setScale(2, RoundingMode.HALF_UP);
+            
+            // Get property configuration for surcharge, fees, and tax
+            PropertyConfigurationDTO.Response propertyConfig = null;
+            BigDecimal surcharge = BigDecimal.ZERO;
+            BigDecimal surchargeAmount = BigDecimal.ZERO;
+            BigDecimal fees = BigDecimal.ZERO;
+            BigDecimal tax = BigDecimal.ZERO;
+            BigDecimal taxAmount = BigDecimal.ZERO;
+            
+            try {
+                propertyConfig = propertyConfigurationService.getPropertyConfigurationByPropertyId(
+                        bookingRequest.getPropertyId());
+                
+                if (propertyConfig != null) {
+                    // Get configuration values
+                    surcharge = propertyConfig.getSurcharge() != null ? 
+                            propertyConfig.getSurcharge() : BigDecimal.ZERO;
+                    fees = propertyConfig.getFees() != null ? 
+                            propertyConfig.getFees() : BigDecimal.ZERO;
+                    tax = propertyConfig.getTax() != null ? 
+                            propertyConfig.getTax() : BigDecimal.ZERO;
+                    
+                    // Calculate surcharge amount
+                    surchargeAmount = subtotal
+                            .multiply(surcharge)
+                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                    
+                    // Calculate tax amount on the total with surcharge and fees
+                    BigDecimal totalWithSurchargeAndFees = subtotal.add(surchargeAmount).add(fees);
+                    taxAmount = totalWithSurchargeAndFees
+                            .multiply(tax)
+                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                }
+            } catch (Exception e) {
+                log.warn("Error getting property configuration: {}", e.getMessage());
+            }
+            
+            // Calculate taxes and fees combined (surchargeAmount + fees + taxAmount)
+            BigDecimal taxesAndFees = surchargeAmount.add(fees).add(taxAmount);
+            
+            // Total for stay is finalTotal from priceResult
+            BigDecimal totalForStay = priceResult.getFinalTotal();
+            
+            // Only store RDS promotions in the user_booking table
+            Integer rdsPromotionId = null;
+            if (promotionId != null) {
+                int remainder = promotionId % 1000;
+                if (remainder == 2) { // RDS promotion
+                    rdsPromotionId = promotionId / 1000; // Get original ID
+                }
+            }
+            
+            // Create and save UserBooking entity
+            UserBooking userBooking = UserBooking.builder()
+                    .bookingId(bookingId)
+                    .propertyId(bookingRequest.getPropertyId())
+                    .roomTypeId(bookingRequest.getRoomTypeId())
+                    .userId(userId) // May be null
+                    .guestId(guestId)
+                    .nightlyRate(nightlyRate)
+                    .averageNightlyPrice(nightlyRate) // Same as nightlyRate since that's already an average
+                    .subtotal(subtotal)
+                    .taxesAndFees(taxesAndFees)
+                    .totalForStay(totalForStay)
+                    .promotionId(rdsPromotionId)
+                    .build();
+            
+            userBookingRepository.save(userBooking);
+            log.info("Saved booking details to RDS with ID: {}", userBooking.getId());
+            
+        } catch (Exception e) {
+            log.error("Error saving booking details to RDS: {}", e.getMessage(), e);
+            // Continue with the booking process even if saving details fails
+        }
+    }
+
+    /**
+     * Helper method to release all acquired locks
+     */
+    private void releaseAcquiredLocks(List<BookingLock> locks) {
+        if (locks == null || locks.isEmpty()) {
+            return;
+        }
+        
+        for (BookingLock lock : locks) {
+            try {
+                releaseRoomLock(lock.getId());
+            } catch (Exception e) {
+                log.error("Error releasing lock {}: {}", lock.getId(), e.getMessage());
+            }
         }
     }
 } 

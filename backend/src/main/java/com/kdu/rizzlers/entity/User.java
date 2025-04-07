@@ -63,4 +63,10 @@ public class User {
     
     @Column(name = "deleted_at")
     private ZonedDateTime deletedAt;
+    
+    @Column(name = "otp")
+    private String otp;
+    
+    @Column(name = "otp_expiry")
+    private ZonedDateTime otpExpiry;
 } 
