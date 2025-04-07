@@ -69,6 +69,7 @@ module "ecs" {
   graphql_api_key = var.graphql_api_key
   encryption_secret_key = var.encryption_secret_key
   email_app_password = var.email_app_password
+  frontend_review_url = var.frontend_review_url
 }
 
 # Application Load Balancer

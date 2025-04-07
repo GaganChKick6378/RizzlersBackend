@@ -65,6 +65,7 @@ jobs:
           # Security and Email configuration
           encryption_secret_key = "${{ secrets.ENCRYPTION_SECRET_KEY }}"
           email_app_password = "${{ secrets.EMAIL_APP_PASSWORD }}"
+          frontend_review_url = "${{ secrets.FRONTEND_REVIEW_URL_DEV }}"
 
           # VPC and networking
           vpc_name          = "KDU-25-VPC"
@@ -166,6 +167,7 @@ jobs:
             --build-arg graphql_api_key="${{ secrets.GRAPHQL_API_KEY }}" \
             --build-arg encryption_secret_key="${{ secrets.ENCRYPTION_SECRET_KEY }}" \
             --build-arg email_app_password="${{ secrets.EMAIL_APP_PASSWORD }}" \
+            --build-arg frontend_review_url="${{ secrets.FRONTEND_REVIEW_URL_DEV }}" \
             --build-arg container_port="8080" \
             --build-arg allowed_origins="http://localhost:3000,https://d327h6huibdsc6.cloudfront.net/,chrome-extension://gmehhhfompinmcoabokhckceachkjmha" \
             --build-arg ENV="dev" \

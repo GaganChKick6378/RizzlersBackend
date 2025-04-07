@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Review Your Stay</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #4c7ef3;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .content {
+            background-color: #ffffff;
+            padding: 20px;
+            border-left: 1px solid #e8e8e8;
+            border-right: 1px solid #e8e8e8;
+        }
+        .footer {
+            background-color: #f7f7f7;
+            padding: 15px;
+            text-align: center;
+            font-size: 12px;
+            color: #777;
+            border-radius: 0 0 5px 5px;
+            border: 1px solid #e8e8e8;
+        }
+        .button {
+            display: inline-block;
+            background-color: #4c7ef3;
+            color: white;
+            padding: 12px 25px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+        .button:hover {
+            background-color: #3a6ad4;
+        }
+        .stars {
+            font-size: 24px;
+            color: #ffc107;
+            letter-spacing: 5px;
+            margin: 15px 0;
+        }
+        .section {
+            margin: 25px 0;
+        }
+        .expiry-note {
+            font-size: 14px;
+            color: #777;
+            font-style: italic;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>How was your stay?</h1>
+        </div>
+        
+        <div class="content">
+            <p>Hello <span th:text="${name}">Valued Guest</span>,</p>
+            
+            <p>Thank you for choosing to stay with us at <strong th:text="${propertyName}">Our Hotel</strong>. 
+               We hope you had a memorable experience!</p>
+            
+            <div class="section">
+                <p>Your feedback is incredibly important to us. Would you take a moment to share your thoughts about your recent stay?</p>
+                
+                <div class="stars">★★★★★</div>
+                
+                <p>Your honest review helps us improve our services and assists future guests in making informed decisions.</p>
+            </div>
+            
+            <div style="text-align: center;">
+                <a th:href="${reviewLink}" class="button">Write Your Review</a>
+            </div>
+            
+            <p class="expiry-note">Please note: This review link will expire in <span th:text="${expiryDays}">7</span> days.</p>
+            
+            <div class="section">
+                <p>Thank you for your time and we look forward to welcoming you again!</p>
+                
+                <p>Best regards,<br>
+                The <span th:text="${propertyName}">Our Hotel</span> Team</p>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>This email was sent as part of your booking experience with us.</p>
+            <p>Please do not reply to this email as it is an automated message.</p>
+        </div>
+    </div>
+</body>
+</html> 

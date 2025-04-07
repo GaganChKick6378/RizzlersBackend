@@ -3,25 +3,24 @@ package com.kdu.rizzlers.repository;
 import com.kdu.rizzlers.entity.BookingLock;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
-import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
-import jakarta.persistence.LockModeType;
 import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Optional;
 
 /**
- * Repository for managing booking locks
+ * Repository for managing booking locks with optimistic locking
  */
 @Repository
 public interface BookingLockRepository extends JpaRepository<BookingLock, Long>, JpaSpecificationExecutor<BookingLock> {
 
     /**
-     * Find active booking lock for a specific room, date range and status
+     * Find active booking lock for a specific room and date range.
+     * Uses optimistic locking through @Version field in the entity.
      * 
      * @param roomId the room ID
      * @param startDate the check-in date
@@ -29,7 +28,6 @@ public interface BookingLockRepository extends JpaRepository<BookingLock, Long>,
      * @param status the booking lock status
      * @return Optional of the booking lock if found
      */
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<BookingLock> findByRoomIdAndStartDateAndEndDateAndStatus(
             Integer roomId, 
             LocalDate startDate, 
@@ -86,12 +84,29 @@ public interface BookingLockRepository extends JpaRepository<BookingLock, Long>,
     void deleteById(Long id);
     
     /**
-     * Delete all expired booking locks
+     * Delete all expired booking locks with PENDING or CONFIRMED status
      * 
      * @param currentTime the current time
      * @return number of records deleted
      */
     @Modifying
-    @Query("DELETE FROM BookingLock bl WHERE bl.lockExpiry < :currentTime AND bl.status = com.kdu.rizzlers.entity.BookingLock.BookingLockStatus.PENDING")
+    @Query("DELETE FROM BookingLock bl WHERE bl.lockExpiry < :currentTime AND bl.status IN (com.kdu.rizzlers.entity.BookingLock.BookingLockStatus.PENDING, com.kdu.rizzlers.entity.BookingLock.BookingLockStatus.CONFIRMED)")
     int deleteExpiredLocks(ZonedDateTime currentTime);
+    
+    /**
+     * Find all expired locks with PENDING or CONFIRMED status
+     * 
+     * @param currentTime the current time
+     * @return list of expired locks
+     */
+    @Query("SELECT bl FROM BookingLock bl WHERE bl.lockExpiry < :currentTime AND bl.status IN (com.kdu.rizzlers.entity.BookingLock.BookingLockStatus.PENDING, com.kdu.rizzlers.entity.BookingLock.BookingLockStatus.CONFIRMED)")
+    List<BookingLock> findExpiredLocks(ZonedDateTime currentTime);
+    
+    /**
+     * Find all CONFIRMED locks associated with a booking
+     * 
+     * @param bookingId the booking ID
+     * @return list of confirmed locks
+     */
+    List<BookingLock> findByBookingIdAndStatus(Integer bookingId, BookingLock.BookingLockStatus status);
 } 

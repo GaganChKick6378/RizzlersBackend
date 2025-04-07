@@ -56,4 +56,25 @@ public class ReviewRepository {
                 .map(s -> s.trim().replace("\"", ""))
                 .collect(Collectors.toList());
     }
+    
+    /**
+     * Get the first image for a room type from reviews
+     * 
+     * @param roomTypeId the room type ID
+     * @return the first image URL or null if none found
+     */
+    public String findFirstImageForRoomType(Integer roomTypeId) {
+        String sql = "SELECT images FROM reviews WHERE room_type_id = ? LIMIT 1";
+        
+        List<String> results = jdbcTemplate.queryForList(sql, String.class, roomTypeId);
+        
+        if (results.isEmpty() || results.get(0) == null) {
+            return null;
+        }
+        
+        String imagesJson = results.get(0);
+        List<String> images = parseTextArray(imagesJson);
+        
+        return images.isEmpty() ? null : images.get(0);
+    }
 } 

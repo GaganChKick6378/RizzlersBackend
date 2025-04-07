@@ -143,6 +143,10 @@ resource "aws_ecs_task_definition" "app_task" {
         {
           name  = "EMAIL_APP_PASSWORD"
           value = var.email_app_password
+        },
+        {
+          name  = "FRONTEND_REVIEW_URL"
+          value = var.frontend_review_url
         }
       ]
       
