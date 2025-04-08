@@ -72,7 +72,7 @@ public class ReviewInvitationServiceImpl implements ReviewInvitationService {
     /**
      * Scheduled job to send review invitations at 12:55 PM daily
      */
-    @Scheduled(cron = "0 59 13 * * *")
+    @Scheduled(cron = "0 05 15 * * *")
     @Transactional
     public void scheduledSendReviewInvitations() {
         log.info("Starting scheduled review invitation process");
