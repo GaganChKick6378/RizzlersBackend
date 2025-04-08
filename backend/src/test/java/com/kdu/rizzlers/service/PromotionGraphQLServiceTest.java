@@ -14,10 +14,13 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
+
+import java.lang.reflect.Method;
 
 @ExtendWith(MockitoExtension.class)
 class PromotionGraphQLServiceTest {
@@ -62,5 +65,28 @@ class PromotionGraphQLServiceTest {
         assertNotNull(result);
         assertTrue(result.isEmpty());
         verify(graphQlClient).document(anyString());
+    }
+
+    @Test
+    public void testInterfaceMethods() {
+        Class<?> interfaceClass = PromotionGraphQLService.class;
+
+        // Test fetchAllPromotions method
+        try {
+            Method method = interfaceClass.getMethod("fetchAllPromotions");
+            assertNotNull(method);
+            assertEquals(List.class, method.getReturnType());
+        } catch (NoSuchMethodException e) {
+            throw new AssertionError("Method 'fetchAllPromotions' not found or signature mismatch", e);
+        }
+
+        // Test fetchPromotion method
+        try {
+            Method method = interfaceClass.getMethod("fetchPromotion", Integer.class);
+            assertNotNull(method);
+            assertEquals(Map.class, method.getReturnType());
+        } catch (NoSuchMethodException e) {
+            throw new AssertionError("Method 'fetchPromotion' not found or signature mismatch", e);
+        }
     }
 } 

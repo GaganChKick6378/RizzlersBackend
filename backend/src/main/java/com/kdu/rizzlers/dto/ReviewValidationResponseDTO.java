@@ -22,4 +22,7 @@ public class ReviewValidationResponseDTO {
     private Integer roomTypeId;
     private String propertyName;
     private String guestName;
+    private String roomTypeName;
+    private String checkInDate;
+    private String checkOutDate;
 } 

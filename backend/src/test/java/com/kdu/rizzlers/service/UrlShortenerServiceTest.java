@@ -11,6 +11,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
+import java.lang.reflect.Method;
+
 /**
  * Tests for the UrlShortenerService interface to ensure proper contract behavior
  */
@@ -96,5 +98,28 @@ public class UrlShortenerServiceTest {
         
         // Assert
         assertNull(result);
+    }
+
+    @Test
+    public void testInterfaceMethods() {
+        Class<?> interfaceClass = UrlShortenerService.class;
+
+        // Test shortenUrl method
+        try {
+            Method method = interfaceClass.getMethod("shortenUrl", String.class);
+            assertNotNull(method);
+            assertEquals(String.class, method.getReturnType());
+        } catch (NoSuchMethodException e) {
+            throw new AssertionError("Method 'shortenUrl' not found or signature mismatch", e);
+        }
+
+        // Test getLongUrl method
+        try {
+            Method method = interfaceClass.getMethod("getLongUrl", String.class);
+            assertNotNull(method);
+            assertEquals(String.class, method.getReturnType());
+        } catch (NoSuchMethodException e) {
+            throw new AssertionError("Method 'getLongUrl' not found or signature mismatch", e);
+        }
     }
 } 
