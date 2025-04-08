@@ -256,12 +256,7 @@ public class BookingServiceImpl implements BookingService {
             Integer guestId = null;
             try {
                 // Create the guest in GraphQL
-                try {
-                    guestId = createGuestInGraphQL(bookingRequest.getTravelInfo());
-                } catch (RuntimeException e) {
-                    log.error("Failed to create guest: {}", e.getMessage());
-                    throw new RuntimeException("Guest creation failed: " + e.getMessage(), e);
-                }
+                guestId = createGuestInGraphQL(bookingRequest.getTravelInfo());
                 
                 if (guestId == null) {
                     throw new RuntimeException("Failed to create guest in GraphQL");
@@ -621,32 +616,25 @@ public class BookingServiceImpl implements BookingService {
         String guestName = travelInfo.getFirst_name() + " " + travelInfo.getLast_name();
         String email = travelInfo.getEmail();
         
-        // Check if guest name is "DONALD TRUMP" - return ID 1 directly
-        if (guestName.equalsIgnoreCase("DONALD TRUMP")) {
-            log.info("Using existing guest ID 1 for Donald Trump");
-            return 1;
-        }
+        log.info("Processing guest creation for email: {}, name: {}", email, guestName);
         
         try {
             // First check if we already have a user with this email in RDS
-            Optional<User> existingUser = userRepository.findByEmailWithGuestId(email);
+            Optional<User> existingUser = userRepository.findByEmail(email);
             
-            if (existingUser.isPresent() && existingUser.get().getGuestId() != null) {
-                // We have an existing user with a guest ID - use that guest ID
-                Integer existingGuestId = existingUser.get().getGuestId();
-                log.info("Using existing guest ID {} for email {}", existingGuestId, email);
-                return existingGuestId;
-            }
-            
-            // Check if a guest with the same name already exists in GraphQL
-            Integer existingGuestId = findExistingGuestIdByName(guestName);
-            if (existingGuestId != null) {
-                log.info("Found existing guest with name '{}' and ID {}", guestName, existingGuestId);
+            if (existingUser.isPresent()) {
+                User user = existingUser.get();
                 
-                // Save the user information to RDS with the existing guest ID
-                saveUserToRds(travelInfo, existingGuestId);
+                // If user has a guest ID, use it
+                if (user.getGuestId() != null) {
+                    log.info("Found existing user in RDS with email {} and guest ID {}", email, user.getGuestId());
+                    return user.getGuestId();
+                }
                 
-                return existingGuestId;
+                // User exists but has no guest ID, create in GraphQL and update user
+                log.info("User exists in RDS with email {} but has no guest ID, creating in GraphQL", email);
+            } else {
+                log.info("No user found in RDS with email {}, will create new guest in GraphQL", email);
             }
             
             // Try to create a new guest with multiple retries
@@ -681,7 +669,11 @@ public class BookingServiceImpl implements BookingService {
                     
                     if (result != null && result.containsKey("guest_id")) {
                         guestId = (Integer) result.get("guest_id");
-                        log.info("Created new guest with ID: {}", guestId);
+                        log.info("Successfully created new guest in GraphQL with ID: {}", guestId);
+                        
+                        // Save or update user in RDS with the new guest ID
+                        saveUserToRds(travelInfo, guestId);
+                        
                     } else {
                         log.warn("Failed to get guest_id from GraphQL response, retry {}/{}", retryCount + 1, maxRetries);
                         retryCount++;
@@ -699,14 +691,11 @@ public class BookingServiceImpl implements BookingService {
                 }
             }
             
-            // If we successfully created a guest, save it to RDS and return the ID
             if (guestId != null) {
-                saveUserToRds(travelInfo, guestId);
                 return guestId;
             }
             
             // If we couldn't create a new guest, this is a critical error
-            // We should not use a hardcoded fallback as it creates confusion
             String errorMessage = "Failed to create new guest after " + maxRetries + " attempts";
             if (lastException != null) {
                 errorMessage += ": " + lastException.getMessage();
@@ -717,47 +706,6 @@ public class BookingServiceImpl implements BookingService {
         } catch (Exception e) {
             log.error("Critical error creating guest in GraphQL: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to create or find guest: " + e.getMessage(), e);
-        }
-    }
-    
-    /**
-     * Find an existing guest by name in GraphQL
-     * 
-     * @param guestName the guest name to look for
-     * @return the guest ID if found, null otherwise
-     */
-    private Integer findExistingGuestIdByName(String guestName) {
-        final String findGuestQuery = """
-            query FindGuest($guestName: String!) {
-              listGuests(where: {guest_name: {equals: $guestName}}, take: 1) {
-                guest_id
-                guest_name
-              }
-            }
-        """;
-        
-        try {
-            List<Map<String, Object>> guests = graphQlClient.document(findGuestQuery)
-                .variable("guestName", guestName)
-                .retrieve("listGuests")
-                .toEntity(new ParameterizedTypeReference<List<Map<String, Object>>>() {})
-                .onErrorResume(e -> {
-                    log.warn("Error finding existing guest: {}", e.getMessage());
-                    return Mono.just(Collections.emptyList());
-                })
-                .block();
-                
-            if (guests != null && !guests.isEmpty()) {
-                Map<String, Object> guest = guests.get(0);
-                if (guest.containsKey("guest_id")) {
-                    return (Integer) guest.get("guest_id");
-                }
-            }
-            
-            return null;
-        } catch (Exception e) {
-            log.warn("Error finding existing guest: {}", e.getMessage());
-            return null;
         }
     }
     
