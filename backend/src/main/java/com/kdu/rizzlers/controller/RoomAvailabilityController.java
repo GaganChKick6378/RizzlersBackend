@@ -4,6 +4,8 @@ import com.kdu.rizzlers.constants.AppConstants;
 import com.kdu.rizzlers.dto.common.PageResponse;
 import com.kdu.rizzlers.dto.in.RoomAvailabilityRequestDTO;
 import com.kdu.rizzlers.dto.out.AvailableRoomDTO;
+import com.kdu.rizzlers.exception.ApiError;
+import com.kdu.rizzlers.exception.RoomUnavailableException;
 import com.kdu.rizzlers.service.RoomAvailabilityService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -15,13 +17,17 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -48,9 +54,11 @@ public class RoomAvailabilityController {
               description = "Retrieves available rooms for a property based on dates and guest/room counts")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "Successfully retrieved available rooms",
-                   content = @Content(schema = @Schema(implementation = AvailableRoomDTO.class)))
+                   content = @Content(schema = @Schema(implementation = AvailableRoomDTO.class))),
+        @ApiResponse(responseCode = "409", description = "No rooms available for the specified criteria",
+                   content = @Content(schema = @Schema(implementation = ApiError.class)))
     })
-    public ResponseEntity<List<AvailableRoomDTO>> getAvailableRoomsLegacy(
+    public ResponseEntity<?> getAvailableRoomsLegacy(
             @Parameter(description = "Property ID", required = true) 
             @RequestParam Integer propertyId,
             
@@ -69,10 +77,34 @@ public class RoomAvailabilityController {
         log.info("Legacy GET request to find available rooms for property: {}, dates: {} to {}, guests: {}, rooms: {}", 
                 propertyId, startDate, endDate, guestCount, roomCount);
         
-        List<AvailableRoomDTO> availableRooms = roomAvailabilityService.getAvailableRooms(
-                propertyId, startDate, endDate, guestCount, roomCount);
-        
-        return ResponseEntity.ok(availableRooms);
+        try {
+            List<AvailableRoomDTO> availableRooms = roomAvailabilityService.getAvailableRooms(
+                    propertyId, startDate, endDate, guestCount, roomCount);
+            
+            if (availableRooms.isEmpty()) {
+                throw new RoomUnavailableException("No rooms available for the specified criteria");
+            }
+            
+            return ResponseEntity.ok(availableRooms);
+        } catch (RoomUnavailableException e) {
+            log.warn("No rooms available: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("timestamp", LocalDateTime.now());
+            response.put("status", HttpStatus.CONFLICT.value());
+            response.put("error", "Conflict");
+            response.put("message", e.getMessage());
+            
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+        } catch (Exception e) {
+            log.error("Error getting available rooms: {}", e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("timestamp", LocalDateTime.now());
+            response.put("status", HttpStatus.INTERNAL_SERVER_ERROR.value());
+            response.put("error", "Internal Server Error");
+            response.put("message", "An unexpected error occurred while processing your request");
+            
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
     }
     
     /**
@@ -92,9 +124,11 @@ public class RoomAvailabilityController {
               description = "Retrieves paginated available rooms for a property based on dates and guest/room counts")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "Successfully retrieved paginated available rooms",
-                   content = @Content(schema = @Schema(implementation = PageResponse.class)))
+                   content = @Content(schema = @Schema(implementation = PageResponse.class))),
+        @ApiResponse(responseCode = "409", description = "No rooms available for the specified criteria",
+                   content = @Content(schema = @Schema(implementation = ApiError.class)))
     })
-    public ResponseEntity<PageResponse<AvailableRoomDTO>> getAvailableRoomsPaginatedLegacy(
+    public ResponseEntity<?> getAvailableRoomsPaginatedLegacy(
             @Parameter(description = "Property ID", required = true) 
             @RequestParam Integer propertyId,
             
@@ -119,10 +153,34 @@ public class RoomAvailabilityController {
         log.info("Legacy GET request to find paginated available rooms for property: {}, dates: {} to {}, guests: {}, rooms: {}, page: {}, size: {}", 
                 propertyId, startDate, endDate, guestCount, roomCount, page, size);
         
-        PageResponse<AvailableRoomDTO> pagedRooms = roomAvailabilityService.getAvailableRoomsPaginated(
-                propertyId, startDate, endDate, guestCount, roomCount, page, size);
-        
-        return ResponseEntity.ok(pagedRooms);
+        try {
+            PageResponse<AvailableRoomDTO> pagedRooms = roomAvailabilityService.getAvailableRoomsPaginated(
+                    propertyId, startDate, endDate, guestCount, roomCount, page, size);
+            
+            if (pagedRooms.getContent().isEmpty() && pagedRooms.getTotalElements() == 0) {
+                throw new RoomUnavailableException("No rooms available for the specified criteria");
+            }
+            
+            return ResponseEntity.ok(pagedRooms);
+        } catch (RoomUnavailableException e) {
+            log.warn("No rooms available: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("timestamp", LocalDateTime.now());
+            response.put("status", HttpStatus.CONFLICT.value());
+            response.put("error", "Conflict");
+            response.put("message", e.getMessage());
+            
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+        } catch (Exception e) {
+            log.error("Error getting paginated available rooms: {}", e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("timestamp", LocalDateTime.now());
+            response.put("status", HttpStatus.INTERNAL_SERVER_ERROR.value());
+            response.put("error", "Internal Server Error");
+            response.put("message", "An unexpected error occurred while processing your request");
+            
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
     }
 
     /**
@@ -144,29 +202,79 @@ public class RoomAvailabilityController {
               description = "Retrieves available rooms for a property based on dates and detailed guest counts")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "Successfully retrieved available rooms",
-                   content = @Content(schema = @Schema(implementation = AvailableRoomDTO.class)))
+                   content = @Content(schema = @Schema(implementation = AvailableRoomDTO.class))),
+        @ApiResponse(responseCode = "409", description = "No rooms available for the specified criteria",
+                   content = @Content(schema = @Schema(implementation = ApiError.class))),
+        @ApiResponse(responseCode = "400", description = "Invalid request parameters",
+                   content = @Content(schema = @Schema(implementation = ApiError.class)))
     })
-    public ResponseEntity<List<AvailableRoomDTO>> getAvailableRooms(
+    public ResponseEntity<?> getAvailableRooms(
             @Parameter(description = "Room availability request with detailed criteria", required = true)
             @RequestBody RoomAvailabilityRequestDTO request) {
         
-        int totalGuestCount = request.getTotalGuestCount();
-        
-        log.info("POST request with body to find available rooms for property: {}, dates: {} to {}, " +
-                "guests: {}, guestCount: {}, adults: {}, seniors: {}, kids: {}, rooms: {}", 
-                request.getPropertyId(), request.getStartDate(), request.getEndDate(), 
-                request.getGuests(), request.getGuestCount(),
-                request.getAdults(), request.getSeniorCitizens(), request.getKids(), 
-                request.getRoomCount());
-        
-        List<AvailableRoomDTO> availableRooms = roomAvailabilityService.getAvailableRooms(
-                request.getPropertyId(), 
-                request.getStartDate(), 
-                request.getEndDate(), 
-                totalGuestCount, 
-                request.getRoomCount());
-        
-        return ResponseEntity.ok(availableRooms);
+        try {
+            // Validate the request
+            if (request.getPropertyId() == null) {
+                throw new IllegalArgumentException("Property ID is required");
+            }
+            
+            if (request.getStartDate() == null || request.getEndDate() == null) {
+                throw new IllegalArgumentException("Both start date and end date are required");
+            }
+            
+            if (request.getStartDate().isAfter(request.getEndDate())) {
+                throw new IllegalArgumentException("Start date cannot be after end date");
+            }
+            
+            int totalGuestCount = request.getTotalGuestCount();
+            
+            log.info("POST request with body to find available rooms for property: {}, dates: {} to {}, " +
+                    "guests: {}, guestCount: {}, adults: {}, seniors: {}, kids: {}, rooms: {}", 
+                    request.getPropertyId(), request.getStartDate(), request.getEndDate(), 
+                    request.getGuests(), request.getGuestCount(),
+                    request.getAdults(), request.getSeniorCitizens(), request.getKids(), 
+                    request.getRoomCount());
+            
+            List<AvailableRoomDTO> availableRooms = roomAvailabilityService.getAvailableRooms(
+                    request.getPropertyId(), 
+                    request.getStartDate(), 
+                    request.getEndDate(), 
+                    totalGuestCount, 
+                    request.getRoomCount());
+            
+            if (availableRooms.isEmpty()) {
+                throw new RoomUnavailableException("No rooms available for the specified criteria");
+            }
+            
+            return ResponseEntity.ok(availableRooms);
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid request: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("timestamp", LocalDateTime.now());
+            response.put("status", HttpStatus.BAD_REQUEST.value());
+            response.put("error", "Bad Request");
+            response.put("message", e.getMessage());
+            
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        } catch (RoomUnavailableException e) {
+            log.warn("No rooms available: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("timestamp", LocalDateTime.now());
+            response.put("status", HttpStatus.CONFLICT.value());
+            response.put("error", "Conflict");
+            response.put("message", e.getMessage());
+            
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+        } catch (Exception e) {
+            log.error("Error getting available rooms: {}", e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("timestamp", LocalDateTime.now());
+            response.put("status", HttpStatus.INTERNAL_SERVER_ERROR.value());
+            response.put("error", "Internal Server Error");
+            response.put("message", "An unexpected error occurred while processing your request");
+            
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
     }
     
     /**
@@ -190,139 +298,80 @@ public class RoomAvailabilityController {
               description = "Retrieves paginated available rooms for a property based on dates and detailed guest counts with optional filtering")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "Successfully retrieved paginated available rooms",
-                   content = @Content(schema = @Schema(implementation = PageResponse.class)))
+                   content = @Content(schema = @Schema(implementation = PageResponse.class))),
+        @ApiResponse(responseCode = "409", description = "No rooms available for the specified criteria",
+                   content = @Content(schema = @Schema(implementation = ApiError.class))),
+        @ApiResponse(responseCode = "400", description = "Invalid request parameters",
+                   content = @Content(schema = @Schema(implementation = ApiError.class)))
     })
-    public ResponseEntity<PageResponse<AvailableRoomDTO>> getAvailableRoomsPaginated(
+    public ResponseEntity<?> getAvailableRoomsPaginated(
             @Parameter(description = "Room availability request with detailed criteria and pagination options", required = true)
             @RequestBody RoomAvailabilityRequestDTO request) {
         
-        int totalGuestCount = request.getTotalGuestCount();
-        
-        // Get the raw page and size values directly from the request
-        final int requestedPageNumber = request.getPage() != null ? request.getPage() : 0;
-        final int requestedPageSize = request.getSize() != null ? request.getSize() : 10;
-        
-        // Log room availability constraints for clarity
-        log.info("Request for {} rooms: Only room types with at least this many available rooms will be returned", 
-                request.getRoomCount());
-        
-        log.info("POST request to find paginated available rooms with parameters:");
-        log.info("- Property ID: {}", request.getPropertyId());
-        log.info("- Date Range: {} to {}", request.getStartDate(), request.getEndDate());
-        log.info("- Explicit guests field: {}", request.getGuests());
-        log.info("- Guest count map: {}", request.getGuestCount());
-        log.info("- Legacy fields: adults={}, seniors={}, kids={}", 
-                request.getAdults(), request.getSeniorCitizens(), request.getKids());
-        log.info("- Final total guest count used: {}", totalGuestCount);
-        log.info("- Room count: {}", request.getRoomCount());
-        log.info("- Bed count: {}", request.getBedCount());
-        
-        // Explicitly log the raw pagination values from the request
-        log.info("- Raw pagination values - page: {}, size: {}", request.getPage(), request.getSize());
-        log.info("- Raw pagination object: {}", request.getPagination());
-        log.info("- Directly accessed pagination values - page: {}, size: {}", requestedPageNumber, requestedPageSize);
-        
-        PageResponse<AvailableRoomDTO> pagedRooms;
-        
-        // Check if filters are provided
-        if (request.getFilters() != null) {
-            log.info("- Filters: roomTypes={}, ratings={}, amenities={}, priceRange={}, sort={}",
-                    request.getFilters().getRoomType(),
-                    request.getFilters().getRatings(),
-                    request.getFilters().getAmenities(),
-                    request.getFilters().getPriceRange(),
-                    request.getFilters().getSort());
+        try {
+            // Validate the request
+            if (request.getPropertyId() == null) {
+                throw new IllegalArgumentException("Property ID is required");
+            }
             
-            // Use the filtered service method but ask for ALL results to ensure we have everything
-            // for manual pagination
-            pagedRooms = roomAvailabilityService.getAvailableRoomsWithFilters(
+            if (request.getStartDate() == null || request.getEndDate() == null) {
+                throw new IllegalArgumentException("Both start date and end date are required");
+            }
+            
+            if (request.getStartDate().isAfter(request.getEndDate())) {
+                throw new IllegalArgumentException("Start date cannot be after end date");
+            }
+            
+            int totalGuestCount = request.getTotalGuestCount();
+            
+            log.info("POST request to find paginated available rooms for property: {}, dates: {} to {}, " +
+                    "guests: {}, guestCount: {}, adults: {}, seniors: {}, kids: {}, rooms: {}, page: {}, size: {}", 
+                    request.getPropertyId(), request.getStartDate(), request.getEndDate(), 
+                    request.getGuests(), request.getGuestCount(),
+                    request.getAdults(), request.getSeniorCitizens(), request.getKids(), 
+                    request.getRoomCount(), request.getPage(), request.getSize());
+            
+            PageResponse<AvailableRoomDTO> pagedRooms = roomAvailabilityService.getAvailableRoomsPaginated(
                     request.getPropertyId(), 
                     request.getStartDate(), 
                     request.getEndDate(), 
                     totalGuestCount, 
                     request.getRoomCount(),
-                    request.getFilters(),
-                    0,  // Get first page
-                    1000); // Get all results (assuming no more than 1000 rooms)
-        } else {
-            // Legacy pagination handling but ask for ALL results
-            pagedRooms = roomAvailabilityService.getAvailableRoomsPaginated(
-                    request.getPropertyId(), 
-                    request.getStartDate(), 
-                    request.getEndDate(), 
-                    totalGuestCount, 
-                    request.getRoomCount(),
-                    0,  // Get first page
-                    1000); // Get all results (assuming no more than 1000 rooms)
+                    request.getPage(), 
+                    request.getSize());
+            
+            if (pagedRooms.getContent().isEmpty() && pagedRooms.getTotalElements() == 0) {
+                throw new RoomUnavailableException("No rooms available for the specified criteria");
+            }
+            
+            return ResponseEntity.ok(pagedRooms);
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid request: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("timestamp", LocalDateTime.now());
+            response.put("status", HttpStatus.BAD_REQUEST.value());
+            response.put("error", "Bad Request");
+            response.put("message", e.getMessage());
+            
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        } catch (RoomUnavailableException e) {
+            log.warn("No rooms available: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("timestamp", LocalDateTime.now());
+            response.put("status", HttpStatus.CONFLICT.value());
+            response.put("error", "Conflict");
+            response.put("message", e.getMessage());
+            
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+        } catch (Exception e) {
+            log.error("Error getting paginated available rooms: {}", e.getMessage(), e);
+            Map<String, Object> response = new HashMap<>();
+            response.put("timestamp", LocalDateTime.now());
+            response.put("status", HttpStatus.INTERNAL_SERVER_ERROR.value());
+            response.put("error", "Internal Server Error");
+            response.put("message", "An unexpected error occurred while processing your request");
+            
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
-
-        // Additional filtering for bedCount if provided
-        if (request.getBedCount() != null) {
-            log.info("Applying additional filter for bed count: {}", request.getBedCount());
-            
-            // Get all available rooms
-            List<AvailableRoomDTO> allRooms = pagedRooms.getContent();
-            
-            // Filter by bed count
-            List<AvailableRoomDTO> filteredRooms = allRooms.stream()
-                .filter(room -> {
-                    // Count single beds and double beds as 1 each
-                    int totalBeds = (room.getSingleBed() != null ? room.getSingleBed() : 0) + 
-                                  (room.getDoubleBed() != null ? room.getDoubleBed() : 0);
-                    return totalBeds >= request.getBedCount();
-                })
-                .collect(Collectors.toList());
-            
-            log.info("After bed count filter: {} rooms remaining out of {}", 
-                    filteredRooms.size(), allRooms.size());
-            
-            // Update pagedRooms with filtered content
-            int totalElements = filteredRooms.size();
-            int totalPages = (int) Math.ceil((double) totalElements / requestedPageSize);
-            
-            pagedRooms = PageResponse.<AvailableRoomDTO>builder()
-                .content(filteredRooms)
-                .pageNumber(0)
-                .pageSize(filteredRooms.size())
-                .totalElements(totalElements)
-                .totalPages(totalPages)
-                .last(true)
-                .build();
-        }
-        
-        log.info("Original response - total: {}, content size: {}", 
-                pagedRooms.getTotalElements(), pagedRooms.getContent().size());
-        
-        // Get all rooms for pagination
-        List<AvailableRoomDTO> allRooms = pagedRooms.getContent();
-        int totalElements = allRooms.size();
-        int totalPages = (int) Math.ceil((double) totalElements / requestedPageSize);
-        
-        // Calculate the correct slices
-        int start = Math.min(requestedPageNumber * requestedPageSize, totalElements);
-        int end = Math.min((requestedPageNumber + 1) * requestedPageSize, totalElements);
-        
-        log.info("Manual pagination - total: {}, page: {}, size: {}, start: {}, end: {}", 
-                totalElements, requestedPageNumber, requestedPageSize, start, end);
-                
-        // Create a sublist with the correct content
-        List<AvailableRoomDTO> pageContent = start < end ? 
-                new ArrayList<>(allRooms.subList(start, end)) : new ArrayList<>();
-        
-        // Create a new page response with the correct content and metadata
-        PageResponse<AvailableRoomDTO> customPagedResponse = PageResponse.<AvailableRoomDTO>builder()
-                .content(pageContent)
-                .pageNumber(requestedPageNumber)
-                .pageSize(requestedPageSize)
-                .totalElements(totalElements)
-                .totalPages(totalPages)
-                .last(requestedPageNumber >= totalPages - 1)
-                .build();
-        
-        log.info("Final custom response - page: {}, size: {}, content size: {}", 
-                customPagedResponse.getPageNumber(), customPagedResponse.getPageSize(), 
-                customPagedResponse.getContent().size());
-                
-        return ResponseEntity.ok(customPagedResponse);
     }
 } 
