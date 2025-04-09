@@ -5,6 +5,7 @@ import com.kdu.rizzlers.entity.Review;
 import com.kdu.rizzlers.entity.ReviewInvitation;
 import com.kdu.rizzlers.repository.GuestReviewRepository;
 import com.kdu.rizzlers.repository.ReviewInvitationRepository;
+import com.kdu.rizzlers.repository.ReviewRepository;
 import com.kdu.rizzlers.service.GuestReviewService;
 import com.kdu.rizzlers.service.ReviewInvitationService;
 import lombok.extern.slf4j.Slf4j;
@@ -27,15 +28,18 @@ public class GuestReviewServiceImpl implements GuestReviewService {
     private final GuestReviewRepository guestReviewRepository;
     private final ReviewInvitationRepository reviewInvitationRepository;
     private final ReviewInvitationService reviewInvitationService;
+    private final ReviewRepository reviewRepository;
 
     @Autowired
     public GuestReviewServiceImpl(
             GuestReviewRepository guestReviewRepository,
             ReviewInvitationRepository reviewInvitationRepository,
-            ReviewInvitationService reviewInvitationService) {
+            ReviewInvitationService reviewInvitationService,
+            ReviewRepository reviewRepository) {
         this.guestReviewRepository = guestReviewRepository;
         this.reviewInvitationRepository = reviewInvitationRepository;
         this.reviewInvitationService = reviewInvitationService;
+        this.reviewRepository = reviewRepository;
     }
 
     /**
@@ -124,6 +128,12 @@ public class GuestReviewServiceImpl implements GuestReviewService {
             
             // Mark the invitation as completed
             reviewInvitationService.markInvitationCompleted(invitation.getToken());
+            
+            // Update the overall rating in the reviews table using moving average
+            boolean ratingUpdated = reviewRepository.updateRoomRating(roomTypeId, reviewSubmission.getOverallRating());
+            if (!ratingUpdated) {
+                log.warn("Failed to update room rating for roomTypeId: {}", roomTypeId);
+            }
             
             log.info("Review successfully submitted for booking {}", invitation.getBookingId());
             return Optional.of(savedReview);
