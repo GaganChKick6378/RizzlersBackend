@@ -5,6 +5,13 @@ import com.kdu.rizzlers.dto.ReviewValidationResponseDTO;
 import com.kdu.rizzlers.entity.Review;
 import com.kdu.rizzlers.service.GuestReviewService;
 import com.kdu.rizzlers.service.ReviewInvitationService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,6 +29,7 @@ import java.util.Optional;
 @RestController
 @RequestMapping("/reviews")
 @Slf4j
+@Tag(name = "Reviews", description = "APIs for guest reviews management")
 public class ReviewController {
 
     private final ReviewInvitationService reviewInvitationService;
@@ -44,7 +52,14 @@ public class ReviewController {
      * @return ValidationResponse with status and booking details if valid
      */
     @GetMapping("/validate")
-    public ResponseEntity<ReviewValidationResponseDTO> validateToken(@RequestParam String token) {
+    @Operation(summary = "Validate review token", description = "Validates a review token and returns booking details if valid")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Token validation processed",
+                   content = @Content(schema = @Schema(implementation = ReviewValidationResponseDTO.class)))
+    })
+    public ResponseEntity<ReviewValidationResponseDTO> validateToken(
+            @Parameter(description = "Review token to validate", required = true)
+            @RequestParam String token) {
         log.info("Validating review token: {}", token);
         ReviewValidationResponseDTO validationResponse = reviewInvitationService.validateToken(token);
         
@@ -63,7 +78,14 @@ public class ReviewController {
      * @return success response or error message
      */
     @PostMapping("/submit")
-    public ResponseEntity<Map<String, Object>> submitReview(@Valid @RequestBody ReviewSubmissionDTO reviewSubmission) {
+    @Operation(summary = "Submit review", description = "Submits a guest review")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Review submitted successfully"),
+        @ApiResponse(responseCode = "400", description = "Invalid request or token")
+    })
+    public ResponseEntity<Map<String, Object>> submitReview(
+            @Parameter(description = "Review submission details", required = true)
+            @Valid @RequestBody ReviewSubmissionDTO reviewSubmission) {
         log.info("Processing review submission for token: {}", reviewSubmission.getToken());
         
         // First validate the token to ensure we can retrieve property and room data if needed
@@ -101,8 +123,18 @@ public class ReviewController {
      * @return count of invitations sent
      */
     @PostMapping("/send-invitations")
+    @Operation(summary = "Send review invitations", 
+              description = "Triggers review invitations for bookings with a specific checkout date (admin only)")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Invitations sent successfully"),
+        @ApiResponse(responseCode = "400", description = "Invalid date format"),
+        @ApiResponse(responseCode = "403", description = "Unauthorized access")
+    })
     public ResponseEntity<Map<String, Object>> sendInvitations(
+            @Parameter(description = "Checkout date in format YYYY-MM-DD", required = true)
             @RequestParam String date,
+            
+            @Parameter(description = "API key for authorization", required = true)
             @RequestParam String apiKey) {
         
         // Simple API key check - in a real app, use proper authentication

@@ -1,5 +1,9 @@
 package com.kdu.rizzlers.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,6 +21,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/test")
+@Tag(name = "Test", description = "Test endpoints for system diagnostics")
 public class TestController {
 
     private static final Logger log = LoggerFactory.getLogger(TestController.class);
@@ -30,6 +35,12 @@ public class TestController {
     private final RestTemplate restTemplate = new RestTemplate();
     
     @GetMapping("/graphql")
+    @Operation(summary = "Test GraphQL connection", 
+              description = "Tests the connection to the GraphQL endpoint with multiple approaches")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Test results returned"),
+        @ApiResponse(responseCode = "500", description = "GraphQL connection test failed")
+    })
     public ResponseEntity<String> testGraphQLConnection() {
         log.info("Testing GraphQL connection to: {}", graphqlUrl);
         

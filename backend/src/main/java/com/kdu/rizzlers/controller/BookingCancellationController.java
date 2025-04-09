@@ -3,6 +3,13 @@ package com.kdu.rizzlers.controller;
 import com.kdu.rizzlers.dto.BookingCancellationRequest;
 import com.kdu.rizzlers.dto.BookingCancellationResponse;
 import com.kdu.rizzlers.service.BookingCancellationService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +23,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/bookings/cancellation")
 @RequiredArgsConstructor
 @Slf4j
+@Tag(name = "Booking Cancellation", description = "APIs for booking cancellation operations")
 public class BookingCancellationController {
 
     private final BookingCancellationService bookingCancellationService;
@@ -27,7 +35,15 @@ public class BookingCancellationController {
      * @return Response with OTP status
      */
     @PostMapping("/request")
+    @Operation(summary = "Request cancellation", description = "Initiate booking cancellation by sending an OTP")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "OTP sent successfully",
+                     content = @Content(schema = @Schema(implementation = BookingCancellationResponse.class))),
+        @ApiResponse(responseCode = "400", description = "Invalid request",
+                     content = @Content(schema = @Schema(implementation = BookingCancellationResponse.class)))
+    })
     public ResponseEntity<BookingCancellationResponse> requestCancellation(
+            @Parameter(description = "Booking cancellation request with booking ID and guest ID", required = true)
             @Valid @RequestBody BookingCancellationRequest request) {
         log.info("Received cancellation request for booking ID: {}, guest ID: {}", 
                 request.getBookingId(), request.getGuestId());
@@ -49,7 +65,15 @@ public class BookingCancellationController {
      * @return Response with cancellation details
      */
     @PostMapping("/verify")
+    @Operation(summary = "Verify cancellation", description = "Verify OTP and complete booking cancellation")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Booking cancelled successfully",
+                     content = @Content(schema = @Schema(implementation = BookingCancellationResponse.class))),
+        @ApiResponse(responseCode = "400", description = "Invalid OTP or request",
+                     content = @Content(schema = @Schema(implementation = BookingCancellationResponse.class)))
+    })
     public ResponseEntity<BookingCancellationResponse> verifyCancellation(
+            @Parameter(description = "Booking cancellation request with OTP", required = true)
             @Valid @RequestBody BookingCancellationRequest request) {
         log.info("Received OTP verification for booking ID: {}, guest ID: {}", 
                 request.getBookingId(), request.getGuestId());
