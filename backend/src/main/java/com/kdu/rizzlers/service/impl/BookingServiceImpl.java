@@ -256,7 +256,7 @@ public class BookingServiceImpl implements BookingService {
             Integer guestId = null;
             try {
                 // Create the guest in GraphQL
-                guestId = createGuestInGraphQL(bookingRequest.getTravelInfo());
+                guestId = createGuestInGraphQL(bookingRequest.getTravelInfo(), bookingRequest.getBillingInfo());
                 
                 if (guestId == null) {
                     throw new RuntimeException("Failed to create guest in GraphQL");
@@ -610,11 +610,12 @@ public class BookingServiceImpl implements BookingService {
      * Create a guest in GraphQL
      * 
      * @param travelInfo the guest travel information
+     * @param billingInfo the guest billing information
      * @return the guest ID, or null if failed
      */
-    private Integer createGuestInGraphQL(BookingRequest.TravelInfo travelInfo) {
+    private Integer createGuestInGraphQL(BookingRequest.TravelInfo travelInfo, BookingRequest.BillingInfo billingInfo) {
         String guestName = travelInfo.getFirst_name() + " " + travelInfo.getLast_name();
-        String email = travelInfo.getEmail();
+        String email = billingInfo.getEmail();
         
         log.info("Processing guest creation for email: {}, name: {}", email, guestName);
         
@@ -672,7 +673,7 @@ public class BookingServiceImpl implements BookingService {
                         log.info("Successfully created new guest in GraphQL with ID: {}", guestId);
                         
                         // Save or update user in RDS with the new guest ID
-                        saveUserToRds(travelInfo, guestId);
+                        saveUserToRds(travelInfo, billingInfo, guestId);
                         
                     } else {
                         log.warn("Failed to get guest_id from GraphQL response, retry {}/{}", retryCount + 1, maxRetries);
@@ -713,15 +714,16 @@ public class BookingServiceImpl implements BookingService {
      * Save user information to RDS
      * 
      * @param travelInfo the guest travel information
+     * @param billingInfo the guest billing information
      * @param guestId the guest ID from GraphQL
      */
-    private void saveUserToRds(BookingRequest.TravelInfo travelInfo, Integer guestId) {
-        if (travelInfo == null || guestId == null) {
-            log.warn("Cannot save user to RDS: travelInfo or guestId is null");
+    private void saveUserToRds(BookingRequest.TravelInfo travelInfo, BookingRequest.BillingInfo billingInfo, Integer guestId) {
+        if (travelInfo == null || billingInfo == null || guestId == null) {
+            log.warn("Cannot save user to RDS: travelInfo, billingInfo or guestId is null");
             return;
         }
         
-        String email = travelInfo.getEmail();
+        String email = billingInfo.getEmail();
         if (email == null || email.trim().isEmpty()) {
             log.warn("Cannot save user to RDS: email is null or empty");
             return;
@@ -751,7 +753,7 @@ public class BookingServiceImpl implements BookingService {
                 User newUser = User.builder()
                         .tenantId(1) // Default tenant ID
                         .email(email)
-                        .phone(travelInfo.getPhone())
+                        .phone(billingInfo.getPhone())
                         .firstName(travelInfo.getFirst_name())
                         .lastName(travelInfo.getLast_name())
                         .emailVerified(false)
@@ -772,7 +774,7 @@ public class BookingServiceImpl implements BookingService {
     public Optional<Integer> createBookingInGraphQL(BookingRequest bookingRequest, Integer roomId) {
         try {
             // Get guest ID from the helper method
-            Integer guestId = createGuestInGraphQL(bookingRequest.getTravelInfo());
+            Integer guestId = createGuestInGraphQL(bookingRequest.getTravelInfo(), bookingRequest.getBillingInfo());
             if (guestId == null) {
                 log.error("Failed to get valid guest ID");
                 return Optional.empty();
