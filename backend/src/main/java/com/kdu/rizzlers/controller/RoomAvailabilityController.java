@@ -5,6 +5,13 @@ import com.kdu.rizzlers.dto.common.PageResponse;
 import com.kdu.rizzlers.dto.in.RoomAvailabilityRequestDTO;
 import com.kdu.rizzlers.dto.out.AvailableRoomDTO;
 import com.kdu.rizzlers.service.RoomAvailabilityService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -21,6 +28,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/rooms")
+@Tag(name = "Room Availability", description = "APIs for checking room availability")
 public class RoomAvailabilityController {
 
     private final RoomAvailabilityService roomAvailabilityService;
@@ -36,11 +44,26 @@ public class RoomAvailabilityController {
      * @return List of available rooms with their details
      */
     @GetMapping("/available/legacy")
+    @Operation(summary = "Get available rooms (legacy)", 
+              description = "Retrieves available rooms for a property based on dates and guest/room counts")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Successfully retrieved available rooms",
+                   content = @Content(schema = @Schema(implementation = AvailableRoomDTO.class)))
+    })
     public ResponseEntity<List<AvailableRoomDTO>> getAvailableRoomsLegacy(
+            @Parameter(description = "Property ID", required = true) 
             @RequestParam Integer propertyId,
+            
+            @Parameter(description = "Check-in date (YYYY-MM-DD)", required = true) 
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            
+            @Parameter(description = "Check-out date (YYYY-MM-DD)", required = true) 
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            
+            @Parameter(description = "Number of guests", example = "2") 
             @RequestParam(defaultValue = "2") Integer guestCount,
+            
+            @Parameter(description = "Number of rooms required", example = "1") 
             @RequestParam(defaultValue = "1") Integer roomCount) {
         
         log.info("Legacy GET request to find available rooms for property: {}, dates: {} to {}, guests: {}, rooms: {}", 
@@ -65,13 +88,32 @@ public class RoomAvailabilityController {
      * @return Paginated list of available rooms with their details
      */
     @GetMapping("/available/paged/legacy")
+    @Operation(summary = "Get paginated available rooms (legacy)", 
+              description = "Retrieves paginated available rooms for a property based on dates and guest/room counts")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Successfully retrieved paginated available rooms",
+                   content = @Content(schema = @Schema(implementation = PageResponse.class)))
+    })
     public ResponseEntity<PageResponse<AvailableRoomDTO>> getAvailableRoomsPaginatedLegacy(
+            @Parameter(description = "Property ID", required = true) 
             @RequestParam Integer propertyId,
+            
+            @Parameter(description = "Check-in date (YYYY-MM-DD)", required = true) 
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            
+            @Parameter(description = "Check-out date (YYYY-MM-DD)", required = true) 
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            
+            @Parameter(description = "Number of guests", example = "2") 
             @RequestParam(defaultValue = "2") Integer guestCount,
+            
+            @Parameter(description = "Number of rooms required", example = "1") 
             @RequestParam(defaultValue = "1") Integer roomCount,
+            
+            @Parameter(description = "Page number (0-based)", example = "0") 
             @RequestParam(defaultValue = AppConstants.DEFAULT_PAGE_NUMBER) int page,
+            
+            @Parameter(description = "Size of each page", example = "10") 
             @RequestParam(defaultValue = AppConstants.DEFAULT_PAGE_SIZE) int size) {
         
         log.info("Legacy GET request to find paginated available rooms for property: {}, dates: {} to {}, guests: {}, rooms: {}, page: {}, size: {}", 
@@ -98,7 +140,14 @@ public class RoomAvailabilityController {
      * @return List of available rooms with their details
      */
     @PostMapping("/available")
+    @Operation(summary = "Get available rooms", 
+              description = "Retrieves available rooms for a property based on dates and detailed guest counts")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Successfully retrieved available rooms",
+                   content = @Content(schema = @Schema(implementation = AvailableRoomDTO.class)))
+    })
     public ResponseEntity<List<AvailableRoomDTO>> getAvailableRooms(
+            @Parameter(description = "Room availability request with detailed criteria", required = true)
             @RequestBody RoomAvailabilityRequestDTO request) {
         
         int totalGuestCount = request.getTotalGuestCount();
@@ -137,7 +186,14 @@ public class RoomAvailabilityController {
      * @return Paginated list of available rooms with their details
      */
     @PostMapping("/available/paged")
+    @Operation(summary = "Get paginated available rooms", 
+              description = "Retrieves paginated available rooms for a property based on dates and detailed guest counts with optional filtering")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Successfully retrieved paginated available rooms",
+                   content = @Content(schema = @Schema(implementation = PageResponse.class)))
+    })
     public ResponseEntity<PageResponse<AvailableRoomDTO>> getAvailableRoomsPaginated(
+            @Parameter(description = "Room availability request with detailed criteria and pagination options", required = true)
             @RequestBody RoomAvailabilityRequestDTO request) {
         
         int totalGuestCount = request.getTotalGuestCount();

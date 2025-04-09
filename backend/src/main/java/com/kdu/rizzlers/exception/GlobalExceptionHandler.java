@@ -22,7 +22,6 @@ import java.util.Map;
  * Global exception handler for REST controllers
  */
 @Slf4j
-@ControllerAdvice
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     
     @Override

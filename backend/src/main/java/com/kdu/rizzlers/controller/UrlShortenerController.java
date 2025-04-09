@@ -3,6 +3,13 @@ package com.kdu.rizzlers.controller;
 import com.kdu.rizzlers.dto.in.UrlShortenRequest;
 import com.kdu.rizzlers.dto.out.UrlShortenResponse;
 import com.kdu.rizzlers.service.UrlShortenerService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +27,7 @@ import java.util.Map;
 @RequestMapping("/url")
 @RequiredArgsConstructor
 @Slf4j
+@Tag(name = "URL Shortener", description = "APIs for URL shortening operations")
 public class UrlShortenerController {
 
     private final UrlShortenerService urlShortenerService;
@@ -31,7 +39,15 @@ public class UrlShortenerController {
      * @return The shortened URL
      */
     @PostMapping("/shorten")
-    public ResponseEntity<UrlShortenResponse> shortenUrl(@Valid @RequestBody UrlShortenRequest request) {
+    @Operation(summary = "Shorten URL", description = "Creates a shortened version of a URL")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "URL shortened successfully",
+                   content = @Content(schema = @Schema(implementation = UrlShortenResponse.class))),
+        @ApiResponse(responseCode = "400", description = "Invalid URL format")
+    })
+    public ResponseEntity<UrlShortenResponse> shortenUrl(
+            @Parameter(description = "URL shortening request", required = true)
+            @Valid @RequestBody UrlShortenRequest request) {
         log.info("Received request to shorten URL: {}", request.getUrl());
         
         String shortenedUrl = urlShortenerService.shortenUrl(request.getUrl());
@@ -50,6 +66,7 @@ public class UrlShortenerController {
      * @return Error response
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
+    @Operation(hidden = true) // Hide from Swagger documentation as this is an exception handler
     public ResponseEntity<Map<String, String>> handleValidationException(MethodArgumentNotValidException e) {
         log.error("Validation error processing URL shortening request: {}", e.getMessage());
         
@@ -76,6 +93,7 @@ public class UrlShortenerController {
      * @return Error response
      */
     @ExceptionHandler(IllegalArgumentException.class)
+    @Operation(hidden = true) // Hide from Swagger documentation as this is an exception handler
     public ResponseEntity<Map<String, String>> handleIllegalArgumentException(IllegalArgumentException e) {
         log.error("Invalid argument error in URL shortening request: {}", e.getMessage());
         
@@ -97,6 +115,7 @@ public class UrlShortenerController {
      * @return Error response
      */
     @ExceptionHandler(Exception.class)
+    @Operation(hidden = true) // Hide from Swagger documentation as this is an exception handler
     public ResponseEntity<Map<String, String>> handleException(Exception e) {
         log.error("Error processing URL shortening request: {}", e.getMessage(), e);
         
