@@ -60,6 +60,12 @@ public class UserBooking {
     @Column(name = "promotion_id")
     private Integer promotionId;
     
+    @Column(name = "special_offers", nullable = false)
+    private Boolean specialOffers;
+    
+    @Column(name = "agreed_to_terms", nullable = false)
+    private Boolean agreedToTerms;
+    
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private ZonedDateTime createdAt;
