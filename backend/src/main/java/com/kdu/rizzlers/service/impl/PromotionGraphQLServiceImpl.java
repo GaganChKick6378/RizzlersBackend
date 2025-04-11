@@ -31,6 +31,15 @@ public class PromotionGraphQLServiceImpl implements PromotionGraphQLService {
             "minimum_days_of_stay " +
             "is_deactivated " +
             "} }";
+            
+    private static final String GET_PROMOTION_BY_ID_QUERY = 
+            "query MyQuery($promotionId: Int!) {" +
+            "  getPromotion(where: {promotion_id: $promotionId}) {" +
+            "    price_factor" +
+            "    promotion_title" +
+            "    promotion_description" +
+            "  }" +
+            "}";
 
     public PromotionGraphQLServiceImpl(@Value("${graphql.endpoint}") String graphqlEndpoint,
                                  @Value("${graphql.api-key:}") String apiKey,
@@ -62,6 +71,39 @@ public class PromotionGraphQLServiceImpl implements PromotionGraphQLService {
         } catch (Exception e) {
             log.error("Error fetching promotions from GraphQL", e);
             return new ArrayList<>();
+        }
+    }
+    
+    @Override
+    public Map<String, Object> fetchPromotion(Integer promotionId) {
+        log.info("Fetching promotion with ID: {} from GraphQL", promotionId);
+        try {
+            // Create variables map for the query
+            Map<String, Object> variables = new HashMap<>();
+            variables.put("promotionId", promotionId);
+            
+            // Execute the query using HttpGraphQlClient
+            Map<String, Object> promotionData = graphQlClient.document(GET_PROMOTION_BY_ID_QUERY)
+                    .variables(variables)
+                    .retrieve("getPromotion")
+                    .toEntity(new ParameterizedTypeReference<Map<String, Object>>() {})
+                    .onErrorResume(e -> {
+                        log.error("Error fetching promotion from GraphQL: {}", e.getMessage(), e);
+                        return Mono.just(new HashMap<>());
+                    })
+                    .block();
+            
+            if (promotionData == null || promotionData.isEmpty()) {
+                log.warn("No promotion found with ID: {}", promotionId);
+                return new HashMap<>();
+            }
+            
+            log.info("Successfully fetched promotion: {}", promotionData);
+            return promotionData;
+            
+        } catch (Exception e) {
+            log.error("Error fetching promotion from GraphQL: {}", e.getMessage(), e);
+            return new HashMap<>();
         }
     }
 } 

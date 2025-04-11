@@ -3,6 +3,13 @@ package com.kdu.rizzlers.controller;
 import com.kdu.rizzlers.dto.in.CombinedPromotionRequestDTO;
 import com.kdu.rizzlers.dto.out.PromotionDTO;
 import com.kdu.rizzlers.service.PromotionService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -14,6 +21,7 @@ import java.util.List;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/promotions")
+@Tag(name = "Promotions", description = "APIs for promotion management")
 public class PromotionController {
 
     private final PromotionService promotionService;
@@ -24,6 +32,11 @@ public class PromotionController {
      * @return List of all promotions
      */
     @GetMapping
+    @Operation(summary = "Get all promotions", description = "Retrieves all promotions available in the system")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Successfully retrieved promotions",
+                   content = @Content(schema = @Schema(implementation = PromotionDTO.class)))
+    })
     public ResponseEntity<List<PromotionDTO>> getAllPromotions() {
         log.info("Request to get all promotions");
         List<PromotionDTO> promotions = promotionService.getAllPromotions();
@@ -50,7 +63,16 @@ public class PromotionController {
      * @return List of eligible promotions
      */
     @PostMapping("/eligible")
+    @Operation(
+        summary = "Get eligible promotions",
+        description = "Retrieves promotions eligible based on the criteria provided, combining both GraphQL promotions and property-specific promotions"
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Successfully retrieved eligible promotions",
+                   content = @Content(schema = @Schema(implementation = PromotionDTO.class)))
+    })
     public ResponseEntity<List<PromotionDTO>> getEligiblePromotions(
+            @Parameter(description = "Criteria for promotion eligibility", required = true)
             @RequestBody CombinedPromotionRequestDTO request) {
         
         int totalGuestCount = request.getTotalGuestCount();

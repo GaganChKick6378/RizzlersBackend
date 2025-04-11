@@ -74,9 +74,11 @@ public class PromotionServiceImpl implements PromotionService {
         graphQlPromotions.stream()
             .filter(promotion -> !promotion.getIsDeactivated())
             .forEach(promotion -> {
+                // Add GRA suffix to GraphQL promotion ID
+                promotion.setPromotionId(promotion.getPromotionId() * 1000 + 1); // Multiply by 1000 and add 1 to make it end with 001
                 result.add(promotion);
                 promotionIds.add(promotion.getPromotionId());
-                log.debug("Added GraphQL promotion: {}", promotion.getPromotionId());
+                log.debug("Added GraphQL promotion: {} (ID: {})", promotion.getPromotionTitle(), promotion.getPromotionId());
             });
         
         // Add DB promotions, potentially overriding GraphQL ones with same ID
@@ -84,6 +86,9 @@ public class PromotionServiceImpl implements PromotionService {
         log.info("Adding database promotions (already filtered for isActive=true AND isVisible=true)");
         for (PropertyPromotion dbPromotion : dbPromotions) {
             PromotionDTO promotionDTO = dbPromotion.toDTO().toPromotionDTO();
+            
+            // Add RD suffix to RDS promotion ID
+            promotionDTO.setPromotionId(promotionDTO.getPromotionId() * 1000 + 2); // Multiply by 1000 and add 2 to make it end with 002
             
             // Either add new promotion or replace existing one
             if (promotionIds.contains(promotionDTO.getPromotionId())) {
@@ -94,7 +99,7 @@ public class PromotionServiceImpl implements PromotionService {
             
             result.add(promotionDTO);
             promotionIds.add(promotionDTO.getPromotionId());
-            log.debug("Added database promotion: {}", promotionDTO.getPromotionId());
+            log.debug("Added database promotion: {} (ID: {})", promotionDTO.getPromotionTitle(), promotionDTO.getPromotionId());
         }
         
         log.info("Combined {} promotions in total", result.size());
@@ -310,6 +315,9 @@ public class PromotionServiceImpl implements PromotionService {
         if (request.getLengthOfStay() < promotion.getMinimumDaysOfStay()) {
             return false;
         }
+        
+        // Extract the original promotion ID by removing the suffix
+        Integer originalPromotionId = promotion.getPromotionId() / 1000;
         
         // Check specific promotion criteria
         switch (promotion.getPromotionTitle()) {

@@ -20,6 +20,9 @@ ARG container_port
 ARG allowed_origins
 ARG ENV
 ARG sql_init_mode=never
+ARG encryption_secret_key
+ARG email_app_password
+ARG frontend_review_url
 
 # Set environment variables for Maven build
 ENV DATABASE_URL=$database_url \
@@ -30,7 +33,10 @@ ENV DATABASE_URL=$database_url \
     CONTAINER_PORT=$container_port \
     ALLOWED_ORIGINS=$allowed_origins \
     ENV=$ENV \
-    SQL_INIT_MODE=$sql_init_mode
+    SQL_INIT_MODE=$sql_init_mode \
+    ENCRYPTION_SECRET_KEY=$encryption_secret_key \
+    EMAIL_APP_PASSWORD=$email_app_password \
+    FRONTEND_REVIEW_URL=$frontend_review_url
 
 # Build application
 RUN mvn install -DskipTests
@@ -53,7 +59,10 @@ ENV DATABASE_URL=$database_url \
     ALLOWED_ORIGINS=$allowed_origins \
     ENV=$ENV \
     SQL_INIT_MODE=$sql_init_mode \
-    CONTEXT_PATH=/api
+    CONTEXT_PATH=/api \
+    ENCRYPTION_SECRET_KEY=$encryption_secret_key \
+    EMAIL_APP_PASSWORD=$email_app_password \
+    FRONTEND_REVIEW_URL=$frontend_review_url
 
 # JVM optimization for container environments
 ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0 -Djava.security.egd=file:/dev/./urandom -Dspring.jmx.enabled=false -Dspring.config.location=classpath:/application.properties -Dspring.main.lazy-initialization=true"

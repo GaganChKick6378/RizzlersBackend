@@ -135,6 +135,18 @@ resource "aws_ecs_task_definition" "app_task" {
         {
           name  = "GRAPHQL_API_KEY_HEADER"
           value = "X-Api-Key"
+        },
+        {
+          name  = "ENCRYPTION_SECRET_KEY"
+          value = var.encryption_secret_key
+        },
+        {
+          name  = "EMAIL_APP_PASSWORD"
+          value = var.email_app_password
+        },
+        {
+          name  = "FRONTEND_REVIEW_URL"
+          value = var.frontend_review_url
         }
       ]
       

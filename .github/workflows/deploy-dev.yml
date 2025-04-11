@@ -62,6 +62,11 @@ jobs:
           graphql_endpoint = "${{ secrets.GRAPHQL_ENDPOINT }}"
           graphql_api_key  = "${{ secrets.GRAPHQL_API_KEY }}"
 
+          # Security and Email configuration
+          encryption_secret_key = "${{ secrets.ENCRYPTION_SECRET_KEY }}"
+          email_app_password = "${{ secrets.EMAIL_APP_PASSWORD }}"
+          frontend_review_url = "${{ secrets.FRONTEND_REVIEW_URL_DEV }}"
+
           # VPC and networking
           vpc_name          = "KDU-25-VPC"
           public_subnet_ids  = ${{ secrets.TF_VAR_PUBLIC_SUBNET_IDS }}
@@ -160,6 +165,9 @@ jobs:
             --build-arg database_password="${{ secrets.DB_PASSWORD }}" \
             --build-arg graphql_endpoint="${{ secrets.GRAPHQL_ENDPOINT }}" \
             --build-arg graphql_api_key="${{ secrets.GRAPHQL_API_KEY }}" \
+            --build-arg encryption_secret_key="${{ secrets.ENCRYPTION_SECRET_KEY }}" \
+            --build-arg email_app_password="${{ secrets.EMAIL_APP_PASSWORD }}" \
+            --build-arg frontend_review_url="${{ secrets.FRONTEND_REVIEW_URL_DEV }}" \
             --build-arg container_port="8080" \
             --build-arg allowed_origins="http://localhost:3000,https://d327h6huibdsc6.cloudfront.net/,chrome-extension://gmehhhfompinmcoabokhckceachkjmha" \
             --build-arg ENV="dev" \

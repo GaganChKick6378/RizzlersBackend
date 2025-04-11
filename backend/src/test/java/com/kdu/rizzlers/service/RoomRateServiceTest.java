@@ -27,6 +27,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.lang.reflect.Method;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -190,5 +191,37 @@ class RoomRateServiceTest {
 
         // Assert
         assertTrue(result.isEmpty());
+    }
+
+    @Test
+    public void testInterfaceMethods() {
+        Class<?> interfaceClass = RoomRateService.class;
+ 
+        // Test getActivePromotions method
+        try {
+            Method method = interfaceClass.getMethod("getActivePromotions", Integer.class, LocalDate.class, LocalDate.class);
+            assertNotNull(method);
+            assertEquals(List.class, method.getReturnType());
+        } catch (NoSuchMethodException e) {
+            throw new AssertionError("Method 'getActivePromotions' not found or signature mismatch", e);
+        }
+
+        // Test getAllPromotions method
+        try {
+            Method method = interfaceClass.getMethod("getAllPromotions", Integer.class);
+            assertNotNull(method);
+            assertEquals(List.class, method.getReturnType());
+        } catch (NoSuchMethodException e) {
+            throw new AssertionError("Method 'getAllPromotions' not found or signature mismatch", e);
+        }
+
+        // Test getDailyRatesWithPromotions method
+        try {
+            Method method = interfaceClass.getMethod("getDailyRatesWithPromotions", Integer.class, Integer.class);
+            assertNotNull(method);
+            assertEquals(List.class, method.getReturnType());
+        } catch (NoSuchMethodException e) {
+            throw new AssertionError("Method 'getDailyRatesWithPromotions' not found or signature mismatch", e);
+        }
     }
 } 

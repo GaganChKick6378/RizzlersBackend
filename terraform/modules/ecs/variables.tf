@@ -83,4 +83,21 @@ variable "graphql_api_key" {
   description = "API key for GraphQL API"
   type        = string
   sensitive   = true
+}
+
+variable "encryption_secret_key" {
+  description = "Secret key for encryption"
+  type        = string
+  sensitive   = true
+}
+
+variable "email_app_password" {
+  description = "App password for email service"
+  type        = string
+  sensitive   = true
+}
+
+variable "frontend_review_url" {
+  description = "Frontend URL for review page"
+  type        = string
 } 
