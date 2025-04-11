@@ -1737,6 +1737,17 @@ public class BookingServiceImpl implements BookingService {
                 }
             }
             
+            // Get special offers and agreed to terms values from payment info
+            Boolean specialOffers = false;
+            Boolean agreedToTerms = false;
+            
+            if (bookingRequest.getPaymentInfo() != null) {
+                specialOffers = bookingRequest.getPaymentInfo().getSpecial_offers() != null ? 
+                        bookingRequest.getPaymentInfo().getSpecial_offers() : false;
+                agreedToTerms = bookingRequest.getPaymentInfo().getAgreed_to_terms() != null ? 
+                        bookingRequest.getPaymentInfo().getAgreed_to_terms() : false;
+            }
+            
             // Create and save UserBooking entity
             UserBooking userBooking = UserBooking.builder()
                     .bookingId(bookingId)
@@ -1750,6 +1761,8 @@ public class BookingServiceImpl implements BookingService {
                     .taxesAndFees(taxesAndFees)
                     .totalForStay(totalForStay)
                     .promotionId(rdsPromotionId)
+                    .specialOffers(specialOffers)
+                    .agreedToTerms(agreedToTerms)
                     .build();
             
             userBookingRepository.save(userBooking);
