@@ -73,17 +73,17 @@ public class BookingController {
                 throw new InvalidBookingException("Room type ID is required");
             }
             
-            if (bookingRequest.getStartDate() == null || bookingRequest.getEndDate() == null) {
-                throw new InvalidBookingException("Start date and end date are required");
-            }
+            // if (bookingRequest.getStartDate() == null || bookingRequest.getEndDate() == null) {
+            //     throw new InvalidBookingException("Start date and end date are required");
+            // }
             
-            if (bookingRequest.getStartDate().isBefore(ChronoLocalDate.from(LocalDateTime.now()))) {
-                throw new InvalidBookingException("Start date must be in the future");
-            }
+            // if (bookingRequest.getStartDate().isBefore(ChronoLocalDate.from(LocalDateTime.now()))) {
+            //     throw new InvalidBookingException("Start date must be in the future");
+            // }
             
-            if (bookingRequest.getStartDate().isAfter(bookingRequest.getEndDate())) {
-                throw new InvalidBookingException("Start date cannot be after end date");
-            }
+            // if (bookingRequest.getStartDate().isAfter(bookingRequest.getEndDate())) {
+            //     throw new InvalidBookingException("Start date cannot be after end date");
+            // }
             
             log.info("Received booking request for propertyId={}, roomTypeId={}, startDate={}, endDate={}",
                     bookingRequest.getPropertyId(), bookingRequest.getRoomTypeId(),

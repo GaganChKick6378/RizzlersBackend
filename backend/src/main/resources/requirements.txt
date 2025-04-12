@@ -1,0 +1,128 @@
+I need you to integrate a housekeeping scheduling system into my existing hotel booking system, which is implemented in Java. The hotel booking system currently manages room bookings, staff details, and other operational data in a database, but it lacks a housekeeping service. The new housekeeping scheduling system should optimize staff allocation for cleaning tasks using linear programming, taking into account staff availability, shift timings, task priorities, and room statuses. The scheduling process should run daily at 6:00 AM, fetch necessary data from the existing database via repository patterns, generate tasks based on room statuses, assign them to available staff, and handle edge cases like staff shortages or variable check-in/check-out times. Below are the detailed requirements, data models, and implementation steps to guide you through the integration.
+
+### Requirements
+
+1. **Context of the Existing System**
+    - My hotel booking system already has a database with tables such as rooms (for room details), bookings (for check-in/check-out dates), and staff (for staff information). You may need to extend or adapt these tables to support the housekeeping service or use repository interfaces to abstract data access.
+    - The housekeeping service should integrate seamlessly with this database to fetch room and staff data and store task assignments.
+2. **Core Features**
+    - Fetch room details (e.g., roomId, checkInDate, checkOutDate) from the repository layer.
+    - Consider staff availability, their preferred shifts, and skill levels (skill levels can be a future enhancement).
+    - Define cleaning task types with required times (e.g., immediate checkout cleaning, daily cleanup).
+    - Generate tasks daily based on room statuses and variable check-in/check-out times.
+    - Support multiple shifts (e.g., morning, afternoon, evening).
+    - Prioritize tasks based on urgency and time windows (e.g., immediate cleaning before check-in is high priority).
+    - Optimize staff allocation using linear programming with the OjAlgo library.
+    - Handle staff absences (e.g., sick leave applied one day in advance) and alert the admin if there’s a staff shortfall.
+3. **Task Types and Characteristics**
+    - **Immediate Checkout Cleaning**:
+        - For rooms checking out and checking in on the same day.
+        - Time window: Between checkout time and check-in time.
+        - Priority: High (must be completed before new guests arrive).
+    - **Delayed Checkout Cleaning**:
+        - For rooms checking out but not checking in on the same day.
+        - Time window: After checkout time until the end of the last shift.
+        - Priority: Medium (less urgent, can be scheduled later).
+    - **Early Daily Cleanup**:
+        - For rooms that are vacant but checking in today.
+        - Time window: From the start of the first shift until check-in time.
+        - Priority: High (rooms must be ready for arriving guests).
+    - **Daily Cleanup**:
+        - For occupied rooms requiring regular cleaning.
+        - Time window: From the start of the first shift to the end of the last shift.
+        - Priority: Low (flexible scheduling).
+4. **Scheduling Process**
+    - Run the scheduling algorithm daily at 6:00 AM in the property’s timezone.
+    - Fetch room statuses, staff availability, and shift details from the database.
+    - Generate tasks based on the task types and room conditions.
+    - Assign staff to their preferred shifts, respecting absences.
+    - Use linear programming to allocate tasks to staff, ensuring:
+        - No overlapping tasks for any staff member.
+        - Tasks are completed within their time windows and staff shift durations.
+        - High-priority tasks are assigned first (via weighted objectives in the LP model).
+    - Store the assigned tasks in a clean_tasks table (or similar) in the database.
+5. **Staff Allocation and Shortfall Handling**
+    - Assign staff to tasks within their preferred shifts (do not move staff between shifts automatically).
+    - If some tasks remain unassigned after optimization:
+        - Calculate the total unassigned task time (in minutes).
+        - Estimate the number of additional staff needed based on average shift duration (e.g., if a shift is 4 hours and there are 8 hours of unassigned tasks, suggest 2 additional staff).
+        - Alert the admin to call external vendors or on-demand staff to cover the shortfall.
+6. **Time Management**
+    - All times (e.g., check-in, check-out, shift start/end) should be interpreted in the property’s timezone.
+    - Discretize time into 30-minute slots for the linear programming model to simplify task scheduling.
+7. **Assumptions and Simplifications**
+    - For this implementation, assume a single property. However, design the system to be extensible for multiple properties (e.g., filter data by property_id if available).
+    - Skill levels of staff can be ignored for now but included as a future enhancement (e.g., assigning complex tasks to expert staff).
+
+### Data Models
+
+Define or adapt the following data models as Java classes to support the housekeeping service. These should align with or extend the existing database schema:
+
+- **Room**
+    - Fields: roomId (int), checkOutDate (LocalDateTime), checkInDate (LocalDateTime).
+    - Purpose: Stores room details and booking status.
+- **Staff**
+    - Fields: staffId (int), preferredShiftId (int), skillLevel (int, optional).
+    - Purpose: Tracks staff availability and preferences.
+- **Shift**
+    - Fields: shiftId (int), startTime (LocalTime), endTime (LocalTime).
+    - Purpose: Defines available working shifts (e.g., 6:00 AM–2:00 PM).
+- **TaskType**
+    - Fields: taskTypeId (int), typeName (String), requiredTimeMinutes (int).
+    - Purpose: Specifies cleaning task types and their durations.
+- **Task**
+    - Fields: taskId (int), roomId (int), taskType (TaskType), durationMinutes (int), windowStart (LocalTime), windowEnd (LocalTime).
+    - Purpose: Represents individual cleaning tasks with time constraints.
+
+### Implementation Steps
+
+1. **Set Up Data Models**
+    - Create Java classes for Room, Staff, Shift, TaskType, and Task if they don’t already exist in the hotel booking system.
+    - Ensure these classes map to the existing database tables or new tables you’ll add.
+2. **Repository Layer**
+    - Define repository interfaces (e.g., RoomRepository, StaffRepository, TaskRepository) to fetch data from the database.
+    - Implement these interfaces to connect to your existing database schema, adapting table names as needed (e.g., rooms, staff, clean_tasks).
+3. **Task Generation**
+    - Create a TaskGenerator class that:
+        - Queries room statuses and booking data daily at 6:00 AM.
+        - Generates tasks based on the defined task types and their time windows.
+        - Uses the TaskType table to set task durations.
+4. **Linear Programming Model**
+    - Use the OjAlgo library to build an LP model:
+        - **Variables**: Binary decision variables for each staff-task-start-time combination (e.g., x[staff][task][time] = 1 if assigned, 0 otherwise).
+        - **Constraints**:
+            - Each task is assigned to at most one staff member.
+            - Staff cannot have overlapping tasks (check time slots).
+            - Tasks must start within their windowStart and windowEnd and finish within the staff’s shift.
+        - **Objective**: Maximize the number of assigned tasks, with higher weights for high-priority tasks (e.g., Immediate Checkout Cleaning = 10, Daily Cleanup = 1).
+    - Solve the model to get the optimal task assignments.
+5. **Housekeeping Service**
+    - Implement a HousekeepingService class to orchestrate the process:
+        - Fetch data via repositories.
+        - Generate tasks using TaskGenerator.
+        - Run the LP model to assign tasks.
+        - Handle unassigned tasks by calculating shortfalls and generating admin alerts.
+6. **Database Integration**
+    - After solving the LP model, insert assigned tasks into the clean_tasks table with details like taskId, roomId, staffId, startTime, and endTime.
+7. **Error Handling and Edge Cases**
+    - Handle staff absences by excluding unavailable staff from the scheduling process.
+    - If no staff are available for a shift, log an error and notify the admin.
+    - Ensure the system gracefully handles missing or invalid data (e.g., null check-in dates).
+
+### Additional Notes
+
+- **Performance**: Optimize database queries and the LP model for efficiency, as the system may handle dozens of rooms and staff daily.
+- **Documentation**: Add Javadoc comments to all classes and methods, explaining their purpose and usage.
+- **Extensibility**: While this implementation assumes a single property, structure the code to allow future multi-property support by adding a propertyId filter where applicable.
+- **Testing**: After integration, test the system with sample data, including edge cases like fully booked days, staff shortages, and variable check-in/check-out times.
+
+### Sample Workflow
+
+1. At 6:00 AM, HousekeepingService runs.
+2. Fetches all rooms with check-ins/check-outs for the day and all available staff.
+3. TaskGenerator creates tasks (e.g., Room 101 needs Immediate Checkout Cleaning from 11:00 AM–12:00 PM).
+4. LP model assigns tasks (e.g., Staff A cleans Room 101 from 11:00 AM–11:30 AM).
+5. Unassigned tasks trigger an alert (e.g., “8 hours of tasks unassigned; suggest hiring 2 extra staff”).
+6. Assigned tasks are saved to clean_tasks for staff to access.
+
+Please implement this housekeeping scheduling system in my existing hotel booking system, ensuring it integrates smoothly with the current database and follows the outlined requirements. Let me know if you need clarification on the existing system’s structure or additional details!
