@@ -20,20 +20,30 @@ import jakarta.annotation.PostConstruct;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Implementation of TaskSchedulingService for generating and assigning tasks
+ * Implementation of TaskSchedulingService for generating and assigning tasks.
+ * Uses a priority-driven greedy algorithm with strict UTC time handling.
  */
 @Service
 @Slf4j
 public class TaskSchedulingServiceImpl implements TaskSchedulingService {
+
+    // Define the property's timezone (IST) and the system's timezone (UTC)
+    private static final ZoneId PROPERTY_TIMEZONE = ZoneId.of("Asia/Kolkata");
+    private static final ZoneId SYSTEM_TIMEZONE = ZoneId.of("UTC");
 
     private final RoomBookingService roomBookingService;
     private final PropertyPreferencesRepository propertyPreferencesRepository;
@@ -61,377 +71,614 @@ public class TaskSchedulingServiceImpl implements TaskSchedulingService {
     public void init() {
         // Load task types into cache at startup
         taskTypeRepository.findAll().forEach(type -> taskTypeCache.put(type.getTypeName(), type));
+        log.info("Task Type Cache initialized with types: {}", taskTypeCache.keySet());
     }
+
+    // Helper record for time ranges (implements Comparable for sorting)
+    private record TimeRange(LocalTime start, LocalTime end) implements Comparable<TimeRange> {
+        @Override
+        public int compareTo(TimeRange other) {
+            // Primarily sort by start time, then by end time if starts are equal
+            int startComparison = this.start.compareTo(other.start);
+            if (startComparison != 0) {
+                return startComparison;
+            }
+            return this.end.compareTo(other.end);
+        }
+    }
+
+     /** Helper record to store shift info with UTC times */
+     private record ShiftUTC(Shift originalShift, LocalTime startTimeUTC, LocalTime endTimeUTC) {}
+
+     /** Helper record to store a potential assignment option */
+     private record AssignmentOption(int staffId, ShiftUTC shiftUTC, LocalTime startTimeUTC, LocalTime endTimeUTC) {}
+
 
     @Override
     public List<TaskGenerationDTO> generateTasks(Integer propertyId, LocalDate date) {
         List<TaskGenerationDTO> tasks = new ArrayList<>();
+        // Use a Set to track generated tasks and prevent duplicates (RoomId + TaskTypeName)
+        Set<String> generatedTaskKeys = new HashSet<>();
         
         Optional<PropertyPreferences> propertyPreferencesOpt = propertyPreferencesRepository.findByPropertyId(propertyId);
         if (propertyPreferencesOpt.isEmpty()) {
-            log.error("Property preferences not found for property ID: {}", propertyId);
+            log.error("Property preferences not found for property ID: {}. Cannot generate tasks.", propertyId);
             return tasks;
         }
         
         PropertyPreferences preferences = propertyPreferencesOpt.get();
-        LocalTime checkInTime = preferences.getCheckInTime();  // 12:00 PM
-        LocalTime checkOutTime = preferences.getCheckOutTime(); // 10:00 AM
-        
-        // Get shifts for this property
+        LocalTime checkInTimeIST = preferences.getCheckInTime();  // e.g., 12:00 IST
+        LocalTime checkOutTimeIST = preferences.getCheckOutTime(); // e.g., 10:00 IST
+
+        // Convert preferences to UTC for internal calculations
+        LocalTime checkInTimeUTC = convertToUTC(checkInTimeIST, date);
+        LocalTime checkOutTimeUTC = convertToUTC(checkOutTimeIST, date);
+        log.info("Property {} Preferences: Check-in: {} IST -> {} UTC, Check-out: {} IST -> {} UTC",
+                 propertyId, checkInTimeIST, checkInTimeUTC, checkOutTimeIST, checkOutTimeUTC);
+
         List<Shift> shifts = shiftRepository.findByPropertyId(propertyId);
         if (shifts.isEmpty()) {
-            log.error("No shifts defined for property ID: {}", propertyId);
+            log.error("No shifts defined for property ID: {}. Cannot generate tasks.", propertyId);
             return tasks;
         }
         
-        // Get earliest and latest shift times
-        LocalTime earliestShiftStart = shifts.stream()
-                .map(Shift::getStartTime)
+        // Convert shifts to UTC to find overall range
+         List<ShiftUTC> shiftsUTC = shifts.stream()
+             .map(shift -> new ShiftUTC(shift, convertToUTC(shift.getStartTime(), date), convertToUTC(shift.getEndTime(), date)))
+             .toList(); // Use List instead of stream for min/max
+
+
+        LocalTime earliestShiftStartUTC = shiftsUTC.stream()
+                .map(ShiftUTC::startTimeUTC)
                 .min(LocalTime::compareTo)
-                .orElseThrow(() -> new IllegalStateException("No shifts found for property " + propertyId));
-                
-        LocalTime latestShiftEnd = shifts.stream()
-                .map(Shift::getEndTime)
+                .orElse(LocalTime.MIN); // Fallback
+        LocalTime latestShiftEndUTC = shiftsUTC.stream()
+                .map(ShiftUTC::endTimeUTC)
                 .max(LocalTime::compareTo)
-                .orElseThrow(() -> new IllegalStateException("No shifts found for property " + propertyId));
+                .orElse(LocalTime.MAX); // Fallback
+        log.info("Overall shift range for property {}: {} UTC - {} UTC", propertyId, earliestShiftStartUTC, latestShiftEndUTC);
+
         
-        // 1. Get rooms checking in today (need early daily cleanup before check-in)
+        // 1. Get rooms checking in today
         List<RoomBookingDTO> checkInRooms = roomBookingService.getRoomsWithCheckInOnDate(propertyId, date);
-        
-        // Create a set of room IDs checking in for fast lookup
-        List<Integer> checkInRoomIds = checkInRooms.stream()
-                .map(RoomBookingDTO::getRoomId)
-                .collect(Collectors.toList());
-        
-        // 2. Get rooms checking out today (need checkout cleaning)
+        Set<Integer> checkInRoomIds = checkInRooms.stream().map(RoomBookingDTO::getRoomId).collect(Collectors.toSet());
+        log.info("Rooms checking in today ({}): {}", checkInRooms.size(), checkInRoomIds);
+
+        // 2. Get rooms checking out today
         List<RoomBookingDTO> checkOutRooms = roomBookingService.getRoomsWithCheckOutOnDate(propertyId, date);
-        
-        // Create a set of room IDs checking out for fast lookup
-        List<Integer> checkOutRoomIds = checkOutRooms.stream()
-                .map(RoomBookingDTO::getRoomId)
-                .collect(Collectors.toList());
-        
-        // 3. Add early daily cleanup tasks for rooms checking in
-        checkInRooms.stream()
-                .filter(room -> !checkOutRoomIds.contains(room.getRoomId()))  // Skip rooms that are checking out on the same day
-                .forEach(room -> {
-                    tasks.add(TaskGenerationDTO.builder()
-                            .externalRoomId(room.getRoomId().toString())
-                            .roomNumber(room.getRoomNumber())
-                            .windowStart(earliestShiftStart) // Can start at beginning of first shift
-                            .windowEnd(checkInTime)         // Must finish before check-in time
-                            .taskTypeName("EARLY_DAILY_CLEANUP") // Service-level type
-                            .dbTaskTypeName("DAILY_CLEANING")   // Database mapping
-                            .priority(3) // High priority but less than immediate checkout
-                            .date(date)
-                            .build());
-                });
-        
-        checkOutRooms.forEach(room -> {
-            if (checkInRoomIds.contains(room.getRoomId())) {
-                // Immediate checkout cleaning (maps to CHECKOUT_CLEANING in DB)
-                // Must be done STRICTLY between checkout time (10 AM) and check-in time (12 PM)
-                tasks.add(TaskGenerationDTO.builder()
+        Set<Integer> checkOutRoomIds = checkOutRooms.stream().map(RoomBookingDTO::getRoomId).collect(Collectors.toSet());
+        log.info("Rooms checking out today ({}): {}", checkOutRooms.size(), checkOutRoomIds);
+
+        // 3. Identify immediate checkout rooms
+        Set<Integer> immediateCheckoutRoomIds = new HashSet<>(checkInRoomIds);
+        immediateCheckoutRoomIds.retainAll(checkOutRoomIds);
+        log.info("Rooms needing immediate checkout cleaning ({}): {}", immediateCheckoutRoomIds.size(), immediateCheckoutRoomIds);
+
+        // Helper lambda to add a task only if it's unique
+        java.util.function.Consumer<TaskGenerationDTO> addTaskIfUnique = (task) -> {
+            String key = task.getExternalRoomId() + "-" + task.getTaskTypeName();
+            if (generatedTaskKeys.add(key)) {
+                tasks.add(task);
+            } else {
+                log.warn("Skipping duplicate task generation for key: {}", key);
+            }
+        };
+
+        // 4. Generate IMMEDIATE_CHECKOUT_CLEANING tasks
+        for (RoomBookingDTO room : checkOutRooms) {
+            if (immediateCheckoutRoomIds.contains(room.getRoomId())) {
+                // Strict Window: After checkout, Before check-in (UTC)
+                addTaskIfUnique.accept(TaskGenerationDTO.builder()
                         .externalRoomId(room.getRoomId().toString())
                         .roomNumber(room.getRoomNumber())
-                        .windowStart(checkOutTime)    // Start after checkout (10 AM)
-                        .windowEnd(checkInTime)       // Must finish before check-in (12 PM)
-                        .taskTypeName("IMMEDIATE_CHECKOUT_CLEANING") // Service-level type
-                        .dbTaskTypeName("CHECKOUT_CLEANING")        // Database mapping
+                        .windowStart(checkOutTimeUTC) // Constraint: Must start >= 04:30 UTC
+                        .windowEnd(checkInTimeUTC)   // Constraint: Must end <= 06:30 UTC
+                        .taskTypeName("IMMEDIATE_CHECKOUT_CLEANING")
+                        .dbTaskTypeName("CHECKOUT_CLEANING") // DB Mapping
                         .priority(4) // Highest priority
                         .date(date)
                         .build());
-            } else {
-                // Delayed checkout cleaning (maps to CHECKOUT_CLEANING in DB)
-                // Can be done anytime after checkout until end of last shift
-                tasks.add(TaskGenerationDTO.builder()
+            }
+        }
+
+        // 5. Generate EARLY_DAILY_CLEANUP tasks (Check-in today, not checkout today)
+        for (RoomBookingDTO room : checkInRooms) {
+            if (!immediateCheckoutRoomIds.contains(room.getRoomId())) {
+                 // Strict Window: After first shift starts, Before check-in (UTC)
+                addTaskIfUnique.accept(TaskGenerationDTO.builder()
                         .externalRoomId(room.getRoomId().toString())
                         .roomNumber(room.getRoomNumber())
-                        .windowStart(checkOutTime)    // Start after checkout (10 AM)
-                        .windowEnd(latestShiftEnd)    // Can finish by end of last shift
-                        .taskTypeName("DELAYED_CHECKOUT_CLEANING") // Service-level type
-                        .dbTaskTypeName("CHECKOUT_CLEANING")      // Database mapping
+                        .windowStart(earliestShiftStartUTC) // Constraint: Can start >= 08:00 UTC
+                        .windowEnd(checkInTimeUTC)        // Constraint: Must end <= 06:30 UTC
+                        .taskTypeName("EARLY_DAILY_CLEANUP")
+                        .dbTaskTypeName("DAILY_CLEANING") // DB Mapping
+                        .priority(3) // High priority
+                        .date(date)
+                        .build());
+            }
+        }
+
+        // 6. Generate DELAYED_CHECKOUT_CLEANING tasks (Checkout today, not check-in today)
+        for (RoomBookingDTO room : checkOutRooms) {
+            if (!immediateCheckoutRoomIds.contains(room.getRoomId())) {
+                // Window: After checkout, Before last shift ends (UTC)
+                addTaskIfUnique.accept(TaskGenerationDTO.builder()
+                        .externalRoomId(room.getRoomId().toString())
+                        .roomNumber(room.getRoomNumber())
+                        .windowStart(checkOutTimeUTC)       // Constraint: Must start >= 04:30 UTC
+                        .windowEnd(latestShiftEndUTC)     // Constraint: Can end <= 16:00 UTC
+                        .taskTypeName("DELAYED_CHECKOUT_CLEANING")
+                        .dbTaskTypeName("CHECKOUT_CLEANING") // DB Mapping
                         .priority(2) // Medium priority
                         .date(date)
                         .build());
             }
-        });
+        }
         
-        // 4. Get currently occupied rooms (need daily cleaning)
+        // 7. Generate DAILY_CLEANUP tasks (Occupied, not checking in/out today)
         List<RoomBookingDTO> occupiedRooms = roomBookingService.getOccupiedRooms(propertyId, date);
-        
-        // Filter out rooms that are checking out today (already handled) or checking in today (already handled)
-        // For daily cleaning, we can use the full day but prioritize around mid-day
-        // This allows efficient staff utilization
         occupiedRooms.stream()
                 .filter(room -> !checkOutRoomIds.contains(room.getRoomId()) && !checkInRoomIds.contains(room.getRoomId()))
                 .forEach(room -> {
-                    // Daily cleanup for occupied rooms (maps to DAILY_CLEANING in DB)
-                    tasks.add(TaskGenerationDTO.builder()
+                    // Window: Within overall shift times (UTC)
+                    addTaskIfUnique.accept(TaskGenerationDTO.builder()
                             .externalRoomId(room.getRoomId().toString())
                             .roomNumber(room.getRoomNumber())
-                            .windowStart(earliestShiftStart)  // Can start at beginning of first shift
-                            .windowEnd(latestShiftEnd)        // Can finish by end of last shift
-                            .taskTypeName("DAILY_CLEANUP")     // Service-level type
-                            .dbTaskTypeName("DAILY_CLEANING") // Database mapping
+                            .windowStart(earliestShiftStartUTC) // Constraint: Can start >= 08:00 UTC
+                            .windowEnd(latestShiftEndUTC)       // Constraint: Can end <= 16:00 UTC
+                            .taskTypeName("DAILY_CLEANUP")
+                            .dbTaskTypeName("DAILY_CLEANING") // DB Mapping
                             .priority(1) // Low priority
                             .date(date)
                             .build());
                 });
         
-        log.info("Generated {} tasks for property {} on date {}", tasks.size(), propertyId, date);
+        log.info("Generated {} unique tasks for property {} on date {}. Task details (times in UTC):", tasks.size(), propertyId, date);
+        tasks.forEach(task -> log.debug("  - Task: Room {}, Type: {}, Prio: {}, Win: {} - {}",
+                task.getExternalRoomId(), task.getTaskTypeName(), task.getPriority(), task.getWindowStart(), task.getWindowEnd()));
         return tasks;
     }
 
     @Override
     public List<TaskAssignmentDTO> assignTasks(Integer propertyId, List<TaskGenerationDTO> tasks, LocalDate date) {
         List<TaskAssignmentDTO> assignedTasks = new ArrayList<>();
-        
         if (tasks.isEmpty()) {
-            log.info("No tasks to assign for property {} on date {}", propertyId, date);
+            log.info("No tasks generated for property {} on date {}, assignment skipped.", propertyId, date);
             return assignedTasks;
         }
         
-        // Load all shifts for this property
-        List<Shift> shifts = shiftRepository.findByPropertyId(propertyId);
-        if (shifts.isEmpty()) {
-            log.error("No shifts defined for property {}", propertyId);
+        List<Shift> shiftsDB = shiftRepository.findByPropertyId(propertyId);
+        if (shiftsDB.isEmpty()) {
+            log.error("No shifts defined for property {}. Cannot assign tasks.", propertyId);
             return assignedTasks;
         }
         
-        // Sort tasks by priority (highest first)
-        List<TaskGenerationDTO> sortedTasks = tasks.stream()
-                .sorted(Comparator.comparing(TaskGenerationDTO::getPriority).reversed())
+        // Convert shifts to UTC for internal logic and sort chronologically
+        List<ShiftUTC> shiftsUTC = shiftsDB.stream()
+            .map(shift -> {
+                LocalTime startUTC = convertToUTC(shift.getStartTime(), date);
+                LocalTime endUTC = convertToUTC(shift.getEndTime(), date);
+                // Log the conversion for debugging
+                log.debug("Shift {} converted: {} IST -> {} UTC, {} IST -> {} UTC", 
+                    shift.getShiftName(), shift.getStartTime(), startUTC, shift.getEndTime(), endUTC);
+                return new ShiftUTC(shift, startUTC, endUTC);
+            })
+            .sorted(Comparator.comparing(ShiftUTC::startTimeUTC))
                 .collect(Collectors.toList());
         
-        // Process each shift
-        for (Shift shift : shifts) {
-            // Get staff available for this shift
-            List<HousekeepingStaff> availableStaff = staffRepository.findAvailableStaffByPropertyIdAndShiftId(
-                    propertyId, shift.getShiftId(), date);
-            
-            if (availableStaff.isEmpty()) {
-                log.warn("No available staff for shift {} on date {}", shift.getShiftName(), date);
-                continue;
-            }
-            
-            // Each staff will have a list of assigned tasks and their end times
-            Map<Integer, List<LocalTime>> staffEndTimes = new HashMap<>();
-            availableStaff.forEach(staff -> staffEndTimes.put(staff.getStaffId(), new ArrayList<>()));
-            
-            // Filter tasks that can be done in this shift
-            List<TaskGenerationDTO> shiftTasks = sortedTasks.stream()
-                    .filter(task -> isTaskWithinShift(task, shift))
-                    .collect(Collectors.toList());
-            
-            for (TaskGenerationDTO task : shiftTasks) {
-                // Find the staff member with the earliest availability
-                Optional<Map.Entry<Integer, List<LocalTime>>> optimalStaffEntry = findOptimalStaff(
-                        staffEndTimes, availableStaff, task, shift);
-                
-                if (optimalStaffEntry.isPresent()) {
-                    Map.Entry<Integer, List<LocalTime>> entry = optimalStaffEntry.get();
-                    Integer staffId = entry.getKey();
-                    List<LocalTime> endTimes = entry.getValue();
-                    
-                    // Get the staff member
-                    HousekeepingStaff staff = availableStaff.stream()
-                            .filter(s -> s.getStaffId().equals(staffId))
-                            .findFirst()
-                            .get();
-                    
-                    // Calculate start time
-                    LocalTime startTime = endTimes.isEmpty() ? 
-                            shift.getStartTime() : 
-                            endTimes.get(endTimes.size() - 1);
-                    
-                    // Make sure start time is not before the task window
-                    if (startTime.isBefore(task.getWindowStart())) {
-                        startTime = task.getWindowStart();
-                    }
-                    
-                    // Get the task duration
-                    CleanTaskType taskType = getTaskType(task);
-                    Duration duration = taskType.getRequiredTime();
-                    
-                    // Calculate end time
-                    LocalTime endTime = startTime.plus(duration);
-                    
-                    // Ensure task can be completed before shift ends and within task window
-                    if (endTime.isAfter(shift.getEndTime()) || endTime.isAfter(task.getWindowEnd())) {
-                        continue; // Skip this task if it would go beyond shift end or task window
-                    }
-                    
-                    // Assign the task
-                    TaskAssignmentDTO assignedTask = TaskAssignmentDTO.builder()
-                            .externalRoomId(task.getExternalRoomId())
-                            .roomNumber(task.getRoomNumber())
-                            .staffId(staffId)
-                            .staffName(staff.getStaffName())
-                            .startTime(startTime)
-                            .taskTypeName(task.getTaskTypeName())
-                            .dbTaskTypeName(task.getDbTaskTypeName())
-                            .duration(duration)
-                            .date(date)
-                            .build();
-                    
-                    assignedTasks.add(assignedTask);
-                    
-                    // Update the staff's end times
-                    endTimes.add(endTime);
-                    
-                    // Remove the task from the list of tasks
-                    sortedTasks.remove(task);
-                }
-            }
+        log.info("Processing task assignment with {} shifts (converted to UTC):", shiftsUTC.size());
+        shiftsUTC.forEach(s -> log.info("  - Shift: {} (ID:{}) {} - {} UTC", s.originalShift.getShiftName(), s.originalShift.getShiftId(), s.startTimeUTC, s.endTimeUTC));
+
+        // --- Staff Availability Setup ---
+        Map<Integer, List<TimeRange>> staffScheduleUTC = new HashMap<>(); // Staff ID -> Sorted List of occupied UTC TimeRanges
+        Map<Integer, List<Integer>> staffByShift = new HashMap<>(); // Shift ID -> List of Staff IDs working that shift
+
+        // Fetch staff for *all* shifts first to initialize the schedule map
+        List<HousekeepingStaff> allStaff = staffRepository.findAvailableStaffByPropertyId(propertyId, date);
+        if (allStaff.isEmpty()) {
+             log.warn("No staff available for property {} on date {}. Cannot assign tasks.", propertyId, date);
+             return assignedTasks;
         }
         
-        log.info("Assigned {} tasks for property {} on date {}", assignedTasks.size(), propertyId, date);
+        // Initialize staff schedules
+        allStaff.forEach(staff -> {
+            staffScheduleUTC.put(staff.getStaffId(), new ArrayList<>());
+            // No need to manage staff.getShifts() here anymore
+        });
+
+        // Populate staff per shift - CHANGE: Consider ALL available staff for EACH shift initially.
+        // The time constraints within the loop will handle actual availability.
+        List<Integer> allAvailableStaffIds = allStaff.stream().map(HousekeepingStaff::getStaffId).collect(Collectors.toList());
+        for (ShiftUTC shiftUTC : shiftsUTC) {
+            // Assign ALL available staff IDs to this shift's potential pool.
+            staffByShift.put(shiftUTC.originalShift.getShiftId(), new ArrayList<>(allAvailableStaffIds)); 
+            log.info("Shift {} (ID:{}) considering {} potential staff: {}", 
+                     shiftUTC.originalShift.getShiftName(), shiftUTC.originalShift.getShiftId(), 
+                     allAvailableStaffIds.size(), allAvailableStaffIds);
+        }
+
+
+        // --- Task Prioritization ---
+        // Sort tasks by Priority (desc), then Window Start (asc)
+        tasks.sort(Comparator.comparing(TaskGenerationDTO::getPriority).reversed()
+                .thenComparing(TaskGenerationDTO::getWindowStart));
+
+        log.info("Attempting to assign {} tasks, sorted by priority (times in UTC):", tasks.size());
+
+        // --- Greedy Assignment Loop ---
+        Set<String> assignedRoomIds = new HashSet<>(); // Track assigned rooms
+
+        for (TaskGenerationDTO task : tasks) {
+            if (assignedRoomIds.contains(task.getExternalRoomId())) {
+                log.debug("Skipping task for room {} (already assigned).", task.getExternalRoomId());
+                continue; // Skip if room already handled by a higher priority task
+            }
+
+            log.debug("Attempting assignment for Task: Room {}, Type: {}, Prio: {}, Window: {} - {}",
+                    task.getExternalRoomId(), task.getTaskTypeName(), task.getPriority(), task.getWindowStart(), task.getWindowEnd());
+
+            Optional<AssignmentOption> bestOptionForThisTask = Optional.empty();
+            CleanTaskType taskType = getTaskType(task); // Use helper to handle missing types
+            if (taskType == null || taskType.getRequiredTime() == null) {
+                 log.error("Task type definition or duration missing for '{}' (DB: '{}'). Skipping task for room {}.",
+                           task.getTaskTypeName(), task.getDbTaskTypeName(), task.getExternalRoomId());
+                continue;
+            }
+            Duration taskDuration = taskType.getRequiredTime();
+
+            // Determine task-specific constraints (min start, max end) in UTC
+            LocalTime taskMinStartUTC = task.getWindowStart();
+            LocalTime taskMaxEndUTC = task.getWindowEnd();
+
+            // Apply checkout/check-in time constraints
+             Optional<PropertyPreferences> prefsOpt = propertyPreferencesRepository.findByPropertyId(propertyId);
+             if (prefsOpt.isPresent()) {
+                 PropertyPreferences prefs = prefsOpt.get();
+                 LocalTime checkOutTimeUTC = convertToUTC(prefs.getCheckOutTime(), date);
+                 LocalTime checkInTimeUTC = convertToUTC(prefs.getCheckInTime(), date);
+
+                 if ("IMMEDIATE_CHECKOUT_CLEANING".equals(task.getTaskTypeName()) || "DELAYED_CHECKOUT_CLEANING".equals(task.getTaskTypeName())) {
+                      if (taskMinStartUTC.isBefore(checkOutTimeUTC)) {
+                          taskMinStartUTC = checkOutTimeUTC; // Must start >= checkout time
+                          log.trace("  Constraint: {} Min start enforced: >= {} UTC (Checkout Time)", task.getTaskTypeName(), taskMinStartUTC);
+                      }
+                 }
+                  if ("EARLY_DAILY_CLEANUP".equals(task.getTaskTypeName())) {
+                      if (taskMaxEndUTC.isAfter(checkInTimeUTC)) {
+                          taskMaxEndUTC = checkInTimeUTC; // Must end <= check-in time
+                           log.trace("  Constraint: {} Max end enforced: <= {} UTC (Check-in Time)", task.getTaskTypeName(), taskMaxEndUTC);
+                      }
+                  }
+             } else {
+                  log.error("Cannot retrieve property preferences to enforce checkout/check-in time constraints!");
+                  // Decide how to proceed - maybe skip tasks requiring these constraints?
+                  // For now, we'll proceed without enforcing these specific constraints if prefs are missing.
+             }
+
+
+            // Iterate through shifts chronologically
+            for (ShiftUTC shiftUTC : shiftsUTC) {
+                List<Integer> potentialStaffIds = staffByShift.getOrDefault(shiftUTC.originalShift.getShiftId(), Collections.emptyList());
+                
+                // Debug log to verify available staff
+                log.debug("Available staff for shift {}: {}", shiftUTC.originalShift.getShiftName(), potentialStaffIds);
+
+                // Skip to next shift if no staff is available
+                if (potentialStaffIds.isEmpty()) {
+                    log.debug("No staff available for shift {}. Skipping to next shift.", shiftUTC.originalShift.getShiftName());
+                    continue;
+                }
+
+                // Iterate through staff available in this shift
+                for (Integer staffId : potentialStaffIds) {
+                    List<TimeRange> schedule = staffScheduleUTC.get(staffId); // Get staff's current schedule
+
+                    // Find the earliest possible start time for this staff+task+shift combo
+                    LocalTime earliestPossibleStart = shiftUTC.startTimeUTC; // Cannot start before shift starts
+
+                    // Consider staff's last task end time
+                    if (!schedule.isEmpty()) {
+                        // Find the latest end time among all tasks assigned to this staff so far
+                        LocalTime latestEndTime = schedule.stream().map(TimeRange::end).max(LocalTime::compareTo).orElse(shiftUTC.startTimeUTC);
+                        if (earliestPossibleStart.isBefore(latestEndTime)) {
+                            earliestPossibleStart = latestEndTime;
+                        }
+                    }
+
+                    // Apply the task's calculated minimum start time constraint
+                    if (earliestPossibleStart.isBefore(taskMinStartUTC)) {
+                        earliestPossibleStart = taskMinStartUTC;
+                    }
+
+                    // Calculate potential end time
+                    LocalTime potentialEndTime = earliestPossibleStart.plus(taskDuration);
+
+                    // --- Check Validity ---
+                    // Add debug logging to trace the validation checks
+                    log.trace("Validating slot for Staff {}: Task time {}-{} in Shift {}-{} for task window {}-{}", 
+                        staffId, earliestPossibleStart, potentialEndTime, 
+                        shiftUTC.startTimeUTC, shiftUTC.endTimeUTC,
+                        task.getWindowStart(), taskMaxEndUTC);
+
+                    // 1. Does the task fit within the SHIFT window?
+                    boolean fitsInShift = !earliestPossibleStart.isBefore(shiftUTC.startTimeUTC) && !potentialEndTime.isAfter(shiftUTC.endTimeUTC);
+                    if (!fitsInShift) {
+                        log.trace("  Staff {}: Task time {}-{} doesn't fit in Shift {}-{}.", 
+                            staffId, earliestPossibleStart, potentialEndTime, shiftUTC.startTimeUTC, shiftUTC.endTimeUTC);
+                        continue; // Cannot fit in this shift
+                    }
+
+                    // 2. Does the task fit within the TASK's constrained window?
+                    boolean fitsInTaskWindow = !earliestPossibleStart.isBefore(task.getWindowStart()) && !potentialEndTime.isAfter(taskMaxEndUTC);
+                    if (!fitsInTaskWindow) {
+                        // Note: We compare against taskMaxEndUTC which includes check-in constraint if applicable
+                        log.trace("  Staff {}: Task time {}-{} doesn't fit in Task Window {}-{}.", 
+                            staffId, earliestPossibleStart, potentialEndTime, task.getWindowStart(), taskMaxEndUTC);
+                        continue; // Cannot fit in task window
+                    }
+
+                    // 3. Does this potential slot overlap with the staff's EXISTING schedule?
+                    boolean overlaps = false;
+                    for (TimeRange existingSlot : schedule) {
+                        // Overlap definition: newStart < existingEnd AND newEnd > existingStart
+                        if (earliestPossibleStart.isBefore(existingSlot.end()) && potentialEndTime.isAfter(existingSlot.start())) {
+                            overlaps = true;
+                            log.trace("  Staff {}: Potential slot {}-{} overlaps with existing {}-{}.", 
+                                staffId, earliestPossibleStart, potentialEndTime, existingSlot.start(), existingSlot.end());
+                            break;
+                        }
+                    }
+                    if (overlaps) {
+                        continue; // Found overlap, try next staff/shift
+                    }
+
+                    // --- Found a valid slot for this staff ---
+                    log.debug("  Valid slot found for Staff {}: {} - {} UTC in Shift {}", 
+                        staffId, earliestPossibleStart, potentialEndTime, shiftUTC.originalShift.getShiftName());
+
+                    // Is this option better (earlier start) than the current best found *for this task*?
+                    if (bestOptionForThisTask.isEmpty() || earliestPossibleStart.isBefore(bestOptionForThisTask.get().startTimeUTC)) {
+                        bestOptionForThisTask = Optional.of(new AssignmentOption(staffId, shiftUTC, earliestPossibleStart, potentialEndTime));
+                        log.debug("    -> New best option for this task.");
+                    }
+
+                } // End staff loop
+
+                // Optimization: If the best option found so far starts within the current shift,
+                // we don't need to check later shifts because we want the earliest possible assignment.
+                if (bestOptionForThisTask.isPresent() && !bestOptionForThisTask.get().startTimeUTC.isAfter(shiftUTC.endTimeUTC)) {
+                    log.debug("  Best option found starting within current shift ({}), stopping shift search for this task.", 
+                        shiftUTC.originalShift.getShiftName());
+                    break; // Move to assignment phase for this task
+                }
+
+            } // End shift loop
+
+            // --- Assign the task if a best option was found ---
+            if (bestOptionForThisTask.isPresent()) {
+                AssignmentOption assignment = bestOptionForThisTask.get();
+                
+                // Double-check that the assignment still fits within shift boundaries
+                boolean stillValid = !assignment.startTimeUTC.isBefore(assignment.shiftUTC.startTimeUTC) && 
+                                    !assignment.endTimeUTC.isAfter(assignment.shiftUTC.endTimeUTC);
+                                    
+                if (!stillValid) {
+                    log.warn("Assignment validation failed! Task for room {} would occur outside of shift hours.", task.getExternalRoomId());
+                    continue; // Skip this assignment as it's no longer valid
+                }
+                
+                // Find staff details from the list fetched earlier
+                HousekeepingStaff assignedStaffDetails = allStaff.stream()
+                    .filter(s -> s.getStaffId().equals(assignment.staffId))
+                    .findFirst()
+                    .orElse(null);
+
+                if (assignedStaffDetails != null) {
+                    TaskAssignmentDTO dto = TaskAssignmentDTO.builder()
+                            .externalRoomId(task.getExternalRoomId())
+                            .roomNumber(task.getRoomNumber())
+                            .staffId(assignedStaffDetails.getStaffId())
+                            .staffName(assignedStaffDetails.getStaffName())
+                            .startTime(assignment.startTimeUTC) // Store assignment time in UTC
+                            .taskTypeName(task.getTaskTypeName())
+                            .dbTaskTypeName(task.getDbTaskTypeName())
+                            .duration(taskDuration)
+                            .date(date)
+                            .build();
+                    assignedTasks.add(dto);
+
+                    // Update staff schedule by adding the new TimeRange
+                    List<TimeRange> schedule = staffScheduleUTC.get(assignment.staffId);
+                    schedule.add(new TimeRange(assignment.startTimeUTC, assignment.endTimeUTC));
+                    Collections.sort(schedule); // Keep schedule sorted
+
+                    assignedRoomIds.add(task.getExternalRoomId()); // Mark room as assigned
+
+                    // Log the assignment in a clearer format showing both UTC and property timezone
+                    LocalTime startTimeIST = convertFromUTC(assignment.startTimeUTC, date);
+                    LocalTime endTimeIST = convertFromUTC(assignment.endTimeUTC, date);
+                    
+                    log.info("ASSIGNED Task: Room {} ({}) to Staff {} ({}) at {} UTC / {} IST (Duration: {} min) in Shift {}",
+                            task.getExternalRoomId(), task.getTaskTypeName(),
+                            assignment.staffId, assignedStaffDetails.getStaffName(),
+                            assignment.startTimeUTC, startTimeIST, taskDuration.toMinutes(),
+                            assignment.shiftUTC.originalShift.getShiftName());
+                } else {
+                    log.error("Consistency Error: Could not find staff details for ID {} during assignment despite being available earlier.", assignment.staffId);
+                    // Consider how to handle this - skip assignment? Log and continue?
+                }
+            } else {
+                // No suitable slot found across all shifts/staff for this task
+                log.warn("UNASSIGNED Task: Room {} ({}), Prio: {}, Window: {} - {} UTC. No suitable slot/staff found.",
+                        task.getExternalRoomId(), task.getTaskTypeName(), task.getPriority(), task.getWindowStart(), taskMaxEndUTC); // Use constrained end
+
+                 // Log specific reasons if possible
+                 if (taskDuration.isZero() || taskDuration.isNegative()) {
+                     log.warn("  -> Reason: Task duration is zero or negative.");
+                 } else if (taskMaxEndUTC.isBefore(taskMinStartUTC) || taskMaxEndUTC.isBefore(task.getWindowStart())) {
+                     log.warn("  -> Reason: Calculated maximum end time ({}) is before minimum start time ({}). Invalid task window/constraints.", taskMaxEndUTC, taskMinStartUTC);
+                 } else if (!shiftsUTC.isEmpty()) {
+                    if (taskMaxEndUTC.isBefore(shiftsUTC.get(0).startTimeUTC)) {
+                        log.warn("  -> Reason: Task window (ends {}) is entirely before the first shift starts ({} UTC). Shift timing conflict.", taskMaxEndUTC, shiftsUTC.get(0).startTimeUTC);
+                    } else if (taskMinStartUTC.isAfter(shiftsUTC.get(shiftsUTC.size()-1).endTimeUTC)) {
+                        log.warn("  -> Reason: Required task start time (>= {}) is after the last shift ends ({} UTC). Shift timing conflict.", taskMinStartUTC, shiftsUTC.get(shiftsUTC.size()-1).endTimeUTC);
+                    } else {
+                        // Generic reason if no specific conflict identified
+                        log.warn("  -> Reason: Could not find an available staff member with a free time slot within the task window and their assigned shift(s). Check staff availability and task durations.");
+                    }
+                 } else {
+                     log.warn("  -> Reason: No shifts available for assignment.");
+                 }
+            }
+
+        } // End task loop
+
+        log.info("Assignment process complete for property {}. Assigned {} / {} tasks.", propertyId, assignedTasks.size(), tasks.size());
+        Set<String> allRoomIds = tasks.stream().map(TaskGenerationDTO::getExternalRoomId).collect(Collectors.toSet());
+        Set<String> unassignedRoomIds = new HashSet<>(allRoomIds);
+        unassignedRoomIds.removeAll(assignedRoomIds);
+        if (!unassignedRoomIds.isEmpty()) {
+            log.warn("Unassigned rooms ({}): {}", unassignedRoomIds.size(), unassignedRoomIds);
+        }
+
         return assignedTasks;
     }
 
+
+    /** Helper method to get CleanTaskType from cache, handling missing types gracefully. */
+    private CleanTaskType getTaskType(TaskGenerationDTO task) {
+        String dbTaskTypeName = task.getDbTaskTypeName(); // Use DB name for cache lookup
+        if (dbTaskTypeName == null || dbTaskTypeName.isBlank()) {
+             log.error("Task for room {} has null or blank dbTaskTypeName ('{}'). Cannot determine duration.", task.getExternalRoomId(), task.getTaskTypeName());
+             return null; // Cannot proceed without a type name
+        }
+
+        if (taskTypeCache.containsKey(dbTaskTypeName)) {
+            return taskTypeCache.get(dbTaskTypeName);
+        } else {
+            // Attempt to fetch from DB if missed during startup (optional, adds DB hit)
+            // Optional<CleanTaskType> fromDb = taskTypeRepository.findByTypeName(dbTaskTypeName);
+            // if(fromDb.isPresent()) {
+            //     taskTypeCache.put(dbTaskTypeName, fromDb.get()); // Update cache
+            //     return fromDb.get();
+            // }
+
+            log.warn("Task type '{}' (DB name: '{}') not found in cache. Using default 30 min duration.",
+                     task.getTaskTypeName(), dbTaskTypeName);
+            // Return a default object, DO NOT CACHE IT as it's not a real type from DB
+            return CleanTaskType.builder()
+                    .typeName(dbTaskTypeName) // Keep original DB name if possible
+                    .requiredTime(Duration.ofMinutes(30))
+                    .build();
+        }
+    }
+
+    /** Converts LocalTime from UTC to Property Timezone (IST) on a specific date */
+    private LocalTime convertFromUTC(LocalTime timeUTC, LocalDate date) {
+        if (timeUTC == null || date == null) {
+            log.error("Cannot convert null time/date from UTC.");
+            return null; // Or throw exception
+        }
+        try {
+            ZonedDateTime zonedDateTimeUTC = ZonedDateTime.of(date, timeUTC, SYSTEM_TIMEZONE);
+            // Use withZoneSameInstant to get the equivalent time point in property timezone
+            ZonedDateTime zonedDateTimeIST = zonedDateTimeUTC.withZoneSameInstant(PROPERTY_TIMEZONE);
+            return zonedDateTimeIST.toLocalTime();
+        } catch (Exception e) {
+            log.error("Error converting time {} UTC on {} to IST: {}", timeUTC, date, e.getMessage(), e);
+            return timeUTC; // Fallback - potentially problematic, depends on error handling strategy
+        }
+    }
+
+    /** Converts LocalTime from Property Timezone (IST) to System Timezone (UTC) on a specific date */
+    private LocalTime convertToUTC(LocalTime timeIST, LocalDate date) {
+        if (timeIST == null || date == null) {
+            log.error("Cannot convert null time/date to UTC.");
+            return null; // Or throw exception
+        }
+        try {
+            ZonedDateTime zonedDateTimeIST = ZonedDateTime.of(date, timeIST, PROPERTY_TIMEZONE);
+            // Use withZoneSameInstant to get the equivalent time point in UTC
+            ZonedDateTime zonedDateTimeUTC = zonedDateTimeIST.withZoneSameInstant(SYSTEM_TIMEZONE);
+            return zonedDateTimeUTC.toLocalTime();
+        } catch (Exception e) {
+            log.error("Error converting time {} IST on {} to UTC: {}", timeIST, date, e.getMessage(), e);
+            return timeIST; // Fallback - potentially problematic, depends on error handling strategy
+        }
+    }
+
+
+    // --- calculateStaffShortfall remains largely the same ---
     @Override
     public int calculateStaffShortfall(Integer propertyId, LocalDate date, List<TaskGenerationDTO> unassignedTasks) {
         if (unassignedTasks.isEmpty()) {
             return 0;
         }
         
-        // Calculate total unassigned minutes
-        int totalUnassignedMinutes = 0;
+         // Calculate total unassigned minutes using cached/default task types
+         long totalUnassignedMinutes = 0;
+         List<String> problematicTasks = new ArrayList<>(); // Keep track of tasks with issues
         
         for (TaskGenerationDTO task : unassignedTasks) {
-            CleanTaskType taskType = getTaskType(task);
+             CleanTaskType taskType = getTaskType(task); // Use the robust helper
+             if (taskType != null && taskType.getRequiredTime() != null && !taskType.getRequiredTime().isNegative() && !taskType.getRequiredTime().isZero()) {
             totalUnassignedMinutes += taskType.getRequiredTime().toMinutes();
-        }
-        
-        // Get average shift duration
+             } else {
+                  String taskInfo = String.format("Room %s (%s)", task.getExternalRoomId(), task.getDbTaskTypeName());
+                  problematicTasks.add(taskInfo);
+                  log.warn("Could not determine valid duration for unassigned task: {}. Skipping for shortfall calculation.", taskInfo);
+             }
+         }
+
+         if (totalUnassignedMinutes == 0) {
+              if (!problematicTasks.isEmpty()) {
+                   log.warn("Staff shortfall calculation resulted in 0 minutes, but some tasks had duration issues: {}", problematicTasks);
+              }
+              return 0;
+         }
+
+         // Get average shift duration for the property
         List<Shift> shifts = shiftRepository.findByPropertyId(propertyId);
         if (shifts.isEmpty()) {
-            // Default to 8 hours if no shifts defined
-            log.warn("No shifts defined for property {}, using default 8 hour shift", propertyId);
-            return (int) Math.ceil(totalUnassignedMinutes / (8.0 * 60));
+             log.warn("No shifts defined for property {}, using default 4 hour shift for shortfall calculation.", propertyId);
+             // Use double for division
+             return (int) Math.ceil(totalUnassignedMinutes / (4.0 * 60.0));
         }
         
         double averageShiftMinutes = shifts.stream()
-                .mapToLong(shift -> Duration.between(shift.getStartTime(), shift.getEndTime()).toMinutes())
-                .average()
-                .orElse(8 * 60); // Default to 8 hours
-        
-        // Calculate number of additional staff needed
-        return (int) Math.ceil(totalUnassignedMinutes / averageShiftMinutes);
-    }
-    
-    /**
-     * Check if a task can be performed within a shift's time window
-     */
-    private boolean isTaskWithinShift(TaskGenerationDTO task, Shift shift) {
-        // Task can be performed in this shift if at least part of its window overlaps with the shift
-        return !(task.getWindowEnd().isBefore(shift.getStartTime()) || 
-                task.getWindowStart().isAfter(shift.getEndTime()));
-    }
-    
-    /**
-     * Find the optimal staff member to assign a task to
-     */
-    private Optional<Map.Entry<Integer, List<LocalTime>>> findOptimalStaff(
-            Map<Integer, List<LocalTime>> staffEndTimes,
-            List<HousekeepingStaff> availableStaff,
-            TaskGenerationDTO task,
-            Shift shift) {
-        
-        // Get task duration
-        CleanTaskType taskType = getTaskType(task);
-        Duration taskDuration = taskType.getRequiredTime();
-        
-        // Find the staff with the earliest availability who can complete the task within the task window and shift
-        return staffEndTimes.entrySet().stream()
-                .filter(entry -> {
-                    // Staff's ID
-                    Integer staffId = entry.getKey();
-                    
-                    // Find the staff's skill level
-                    Optional<HousekeepingStaff> staffOpt = availableStaff.stream()
-                            .filter(s -> s.getStaffId().equals(staffId))
-                            .findFirst();
-                    
-                    if (staffOpt.isEmpty()) {
-                        return false;
-                    }
-                    
-                    // Staff's last end time or shift start time if no tasks yet
-                    List<LocalTime> endTimes = entry.getValue();
-                    LocalTime startTime = endTimes.isEmpty() ? 
-                            shift.getStartTime() : 
-                            endTimes.get(endTimes.size() - 1);
-                    
-                    // Make sure start time is not before the task window
-                    if (startTime.isBefore(task.getWindowStart())) {
-                        startTime = task.getWindowStart();
-                    }
-                    
-                    // Calculate when the task would end
-                    LocalTime endTime = startTime.plus(taskDuration);
-                    
-                    // Check if task can be completed within the task window and shift
-                    return !endTime.isAfter(task.getWindowEnd()) && !endTime.isAfter(shift.getEndTime());
-                })
-                .min(Comparator.comparing(entry -> {
-                    // Compare based on the earliest available time
-                    List<LocalTime> endTimes = entry.getValue();
-                    LocalTime availableTime = endTimes.isEmpty() ? shift.getStartTime() : endTimes.get(endTimes.size() - 1);
-                    
-                    // Ensure we don't start before the task's window start
-                    return availableTime.isBefore(task.getWindowStart()) ? task.getWindowStart() : availableTime;
-                }));
-    }
-    
-    /**
-     * Get a task type from the cache or database using the DB-level task type name
-     */
-    private CleanTaskType getTaskType(TaskGenerationDTO task) {
-        String dbTaskTypeName = task.getDbTaskTypeName();
-        
-        if (taskTypeCache.containsKey(dbTaskTypeName)) {
-            return taskTypeCache.get(dbTaskTypeName);
-        }
-        
-        // If not in cache, try to get from database
-        Optional<CleanTaskType> taskTypeOpt = taskTypeRepository.findByTypeName(dbTaskTypeName);
-        if (taskTypeOpt.isPresent()) {
-            CleanTaskType taskType = taskTypeOpt.get();
-            taskTypeCache.put(dbTaskTypeName, taskType);
-            return taskType;
-        }
-        
-        // If not found, create a default task type with 30 minutes duration
-        log.warn("Task type {} not found in database, using default duration of 30 minutes", dbTaskTypeName);
-        return CleanTaskType.builder()
-                .typeName(dbTaskTypeName)
-                .requiredTime(Duration.ofMinutes(30))
-                .build();
-    }
-    
-    /**
-     * Get a task type from the cache or database by name
-     */
-    private CleanTaskType getTaskTypeByName(String typeName) {
-        if (taskTypeCache.containsKey(typeName)) {
-            return taskTypeCache.get(typeName);
-        }
-        
-        // If not in cache, try to get from database
-        Optional<CleanTaskType> taskTypeOpt = taskTypeRepository.findByTypeName(typeName);
-        if (taskTypeOpt.isPresent()) {
-            CleanTaskType taskType = taskTypeOpt.get();
-            taskTypeCache.put(typeName, taskType);
-            return taskType;
-        }
-        
-        // If not found, create a default task type with 30 minutes duration
-        log.warn("Task type {} not found, using default duration of 30 minutes", typeName);
-        return CleanTaskType.builder()
-                .typeName(typeName)
-                .requiredTime(Duration.ofMinutes(30))
-                .build();
-    }
-} 
+                 .mapToLong(shift -> {
+                     try {
+                         // Ensure times are not null before calculating duration
+                         if (shift.getStartTime() != null && shift.getEndTime() != null) {
+                             Duration d = Duration.between(shift.getStartTime(), shift.getEndTime());
+                              // Handle shifts crossing midnight if necessary, though less common for cleaning shifts
+                              if (d.isNegative()) {
+                                   d = d.plusDays(1); // Add 24 hours if end time is before start time
+                              }
+                              return d.toMinutes();
+                         } else {
+                              log.warn("Shift {} has null start/end time, cannot calculate duration.", shift.getShiftId());
+                              return 0L;
+                         }
+                     } catch (Exception e) {
+                          log.warn("Error calculating duration for shift {}: {}", shift.getShiftId(), e.getMessage());
+                          return 0L; // Treat as invalid duration
+                     }
+                 })
+                 .filter(d -> d > 0) // Only consider valid, positive durations
+                 .average()
+                 .orElse(4 * 60); // Default to 4 hours (240 mins) if no valid shifts or calculation fails
+
+          if (averageShiftMinutes <= 0) {
+              log.warn("Average shift duration calculation resulted in <= 0, using default 4 hours for shortfall.");
+              averageShiftMinutes = 4 * 60.0;
+          }
+
+         // Calculate number of additional staff needed (use double division)
+         int neededStaff = (int) Math.ceil(totalUnassignedMinutes / averageShiftMinutes);
+         log.info("Calculated staff shortfall: {} minutes unassigned / avg {} min/shift = {} staff needed.",
+                  totalUnassignedMinutes, String.format("%.2f", averageShiftMinutes), neededStaff);
+         return neededStaff;
+     }
+
+} // End of class 

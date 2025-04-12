@@ -136,8 +136,34 @@ public class HousekeepingServiceImpl implements HousekeepingService {
             return new ArrayList<>();
         }
         
+        log.info("Generated {} tasks for property {} on date {}", generatedTasks.size(), propertyId, date);
+        
+        // Count tasks by type
+        Map<String, Integer> tasksByType = generatedTasks.stream()
+                .collect(Collectors.groupingBy(TaskGenerationDTO::getTaskTypeName, Collectors.summingInt(e -> 1)));
+        
+        tasksByType.forEach((type, count) -> {
+            log.info("Task type: {} - Count: {}", type, count);
+        });
+        
+        // Load shifts once for the entire method
+        List<Shift> shifts = shiftRepository.findByPropertyId(propertyId);
+        
         // Assign tasks
         List<TaskAssignmentDTO> assignedTasks = taskSchedulingService.assignTasks(propertyId, generatedTasks, date);
+        
+        // Count assigned tasks by shift
+        for (Shift shift : shifts) {
+            int tasksInShift = (int) assignedTasks.stream()
+                    .filter(task -> task.getStartTime().compareTo(shift.getStartTime()) >= 0 && 
+                                   task.getStartTime().compareTo(shift.getEndTime()) < 0)
+                    .count();
+            log.info("Shift: {} ({} - {}) - Assigned tasks: {}", 
+                    shift.getShiftName(), 
+                    shift.getStartTime(), 
+                    shift.getEndTime(), 
+                    tasksInShift);
+        }
         
         // Create a copy of generatedTasks to find unassigned tasks
         List<TaskGenerationDTO> unassignedTasks = new ArrayList<>();
@@ -174,8 +200,7 @@ public class HousekeepingServiceImpl implements HousekeepingService {
                 }
             }
             
-            // Calculate average shift duration
-            List<Shift> shifts = shiftRepository.findByPropertyId(propertyId);
+            // Calculate average shift duration using the shifts already loaded
             double averageShiftMinutes = shifts.stream()
                     .mapToLong(shift -> Duration.between(shift.getStartTime(), shift.getEndTime()).toMinutes())
                     .average()
@@ -209,7 +234,7 @@ public class HousekeepingServiceImpl implements HousekeepingService {
                     .taskTypeId(taskTypeOpt.get().getTaskTypeId())
                     .date(assignedTask.getDate())
                     .externalRoomId(assignedTask.getExternalRoomId())
-                    .remark(assignedTask.getTaskTypeName())
+                    .remark(assignedTask.getTaskTypeName()) // Use the service-level type name
                     .build();
             
             savedTasks.add(taskRepository.save(task));
@@ -274,7 +299,7 @@ public class HousekeepingServiceImpl implements HousekeepingService {
      * Scheduled method that runs daily to generate and assign tasks based on room bookings.
      * This creates cleaning tasks for all properties and automatically assigns them to available staff.
      */
-    @Scheduled(cron = "0 54 16 * * *") // Run at 6:00 AM every day
+    @Scheduled(cron = "0 05 03 * * *") // Run at 6:00 AM every day
     @Transactional
     public void generateAndAssignDailyTasks() {
         log.info("Starting daily task generation and assignment for all properties...");

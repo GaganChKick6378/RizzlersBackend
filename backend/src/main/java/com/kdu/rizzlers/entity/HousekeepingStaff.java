@@ -9,6 +9,8 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Entity representing housekeeping staff
@@ -57,4 +59,23 @@ public class HousekeepingStaff {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "property_id", referencedColumnName = "property_id", insertable = false, updatable = false)
     private PropertyPreferences propertyPreferences;
+    
+    /**
+     * List of shifts assigned to this staff member.
+     * This is a helper field that is always populated by the service layer, not directly from DB.
+     */
+    @Transient
+    private List<Shift> shifts = new ArrayList<>();
+    
+    /**
+     * Helper method to get shifts assigned to this staff member.
+     * When preferred shift is set, that shift is included by default.
+     * Additional shifts can be added as needed by the application.
+     * 
+     * @return List of shifts assigned to this staff
+     */
+    public List<Shift> getShifts() {
+        // Always return the list, even if empty
+        return shifts;
+    }
 } 
