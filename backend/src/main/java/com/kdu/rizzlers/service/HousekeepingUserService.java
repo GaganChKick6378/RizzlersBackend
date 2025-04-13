@@ -78,4 +78,12 @@ public interface HousekeepingUserService {
      * @return Optional of HousekeepingUser if found, otherwise empty
      */
     Optional<HousekeepingUser> getUserByStaffId(Integer staffId);
+    
+    /**
+     * Find email address by staff ID
+     * 
+     * @param staffId the staff ID
+     * @return Optional containing the email if found, otherwise empty
+     */
+    Optional<String> findEmailByStaffId(Integer staffId);
 } 

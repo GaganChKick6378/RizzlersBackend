@@ -27,4 +27,8 @@ public class TaskAssignmentDTO {
     private String dbTaskTypeName;  // Database-level type mapping
     private Duration duration;
     private LocalDate date;
+    
+    // Added for balancing logic
+    private LocalTime originalWindowStart; // UTC
+    private LocalTime originalWindowEnd; // UTC
 } 

@@ -70,6 +70,12 @@ module "ecs" {
   encryption_secret_key = var.encryption_secret_key
   email_app_password = var.email_app_password
   frontend_review_url = var.frontend_review_url
+  aws_cognito_region = var.aws_cognito_region
+  aws_cognito_user_pool_id = var.aws_cognito_user_pool_id
+  aws_cognito_app_client_id = var.aws_cognito_app_client_id
+  aws_cognito_jwk_url = var.aws_cognito_jwk_url
+  jwt_secret = var.jwt_secret
+  jwt_expiration = var.jwt_expiration
 }
 
 # Application Load Balancer
