@@ -130,4 +130,10 @@ public class HousekeepingUserServiceImpl implements HousekeepingUserService {
     public Optional<HousekeepingUser> getUserByStaffId(Integer staffId) {
         return userRepository.findByStaffId(staffId);
     }
+
+    @Override
+    public Optional<String> findEmailByStaffId(Integer staffId) {
+        return userRepository.findByStaffId(staffId)
+                .map(HousekeepingUser::getEmail);
+    }
 } 

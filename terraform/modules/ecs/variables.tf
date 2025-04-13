@@ -100,4 +100,40 @@ variable "email_app_password" {
 variable "frontend_review_url" {
   description = "Frontend URL for review page"
   type        = string
+}
+
+# AWS Cognito Configuration
+variable "aws_cognito_region" {
+  description = "AWS Cognito region"
+  type        = string
+}
+
+variable "aws_cognito_user_pool_id" {
+  description = "AWS Cognito user pool ID"
+  type        = string
+  sensitive   = true
+}
+
+variable "aws_cognito_app_client_id" {
+  description = "AWS Cognito app client ID"
+  type        = string
+  sensitive   = true
+}
+
+variable "aws_cognito_jwk_url" {
+  description = "AWS Cognito JWK URL"
+  type        = string
+  sensitive   = true
+}
+
+# JWT Configuration
+variable "jwt_secret" {
+  description = "Secret key for JWT token generation and validation"
+  type        = string
+  sensitive   = true
+}
+
+variable "jwt_expiration" {
+  description = "JWT token expiration time in seconds"
+  type        = string
 } 

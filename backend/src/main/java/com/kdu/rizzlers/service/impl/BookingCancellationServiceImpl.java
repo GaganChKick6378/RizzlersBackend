@@ -5,6 +5,7 @@ import com.kdu.rizzlers.dto.BookingDetailsDTO;
 import com.kdu.rizzlers.entity.User;
 import com.kdu.rizzlers.repository.UserRepository;
 import com.kdu.rizzlers.service.BookingCancellationService;
+import com.kdu.rizzlers.service.CognitoAuthService;
 import com.kdu.rizzlers.service.EmailService;
 import com.kdu.rizzlers.service.GraphQLService;
 
@@ -26,6 +27,7 @@ public class BookingCancellationServiceImpl implements BookingCancellationServic
     private final UserRepository userRepository;
     private final EmailService emailService;
     private final GraphQLService graphQLService;
+    private final CognitoAuthService cognitoAuthService;
     
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final int OTP_EXPIRY_MINUTES = 10;
@@ -149,6 +151,82 @@ public class BookingCancellationServiceImpl implements BookingCancellationServic
         }
         
         // Cancel booking using GraphQL mutation
+        try {
+            Map<String, Object> response = cancelBookingInGraphQL(bookingId);
+            if (response != null && response.containsKey("updateBooking")) {
+                Map<String, Object> updateBooking = (Map<String, Object>) response.get("updateBooking");
+                
+                // Create response with booking details
+                return BookingCancellationResponse.builder()
+                        .success(true)
+                        .message("Booking cancelled successfully")
+                        .bookingId((Integer) updateBooking.get("booking_id"))
+                        .statusId((Integer) updateBooking.get("status_id"))
+                        .propertyId((Integer) updateBooking.get("property_id"))
+                        .guestId((Integer) updateBooking.get("guest_id"))
+                        .status(getStatusFromResponse(updateBooking))
+                        .build();
+            }
+            
+            return BookingCancellationResponse.error("Failed to cancel booking");
+        } catch (Exception e) {
+            log.error("Error cancelling booking in GraphQL", e);
+            return BookingCancellationResponse.error("Error cancelling booking: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    @Transactional
+    public BookingCancellationResponse authenticatedCancellation(Integer guestId, Integer bookingId, String idToken) {
+        log.info("Processing authenticated cancellation request for booking: {}, guest: {}", bookingId, guestId);
+        
+        // Validate Cognito token
+        if (!cognitoAuthService.isAuthenticated(idToken)) {
+            log.warn("Authentication failed for ID token when attempting to cancel booking: {}", bookingId);
+            return BookingCancellationResponse.error("Authentication failed");
+        }
+        
+        String userEmail = cognitoAuthService.validateIdToken(idToken);
+        log.info("Authenticated user with email: {} is cancelling booking: {}", userEmail, bookingId);
+        
+        // Find user by guest ID
+        Optional<User> userOpt = userRepository.findByGuestId(guestId);
+        if (userOpt.isEmpty()) {
+            return BookingCancellationResponse.error("User not found for the provided guest ID");
+        }
+        
+        User user = userOpt.get();
+        
+        // Optional validation: Check if the authenticated user's email matches the user's email
+        if (!user.getEmail().equalsIgnoreCase(userEmail)) {
+            log.warn("Email mismatch for authenticated user. Token email: {}, User email: {}", 
+                     userEmail, user.getEmail());
+            return BookingCancellationResponse.error("Authenticated user does not match booking owner");
+        }
+        
+        // Check if booking is already cancelled
+        Map<String, Object> bookingStatus = checkBookingStatus(bookingId);
+        if (bookingStatus == null) {
+            return BookingCancellationResponse.error("Booking not found");
+        }
+        
+        Integer statusId = (Integer) bookingStatus.get("status_id");
+        String status = (String) bookingStatus.get("status");
+        
+        if (statusId == 2) {
+            log.info("Booking {} is already cancelled (status_id=2, status={}). Cancellation request rejected.", 
+                     bookingId, status);
+            return BookingCancellationResponse.builder()
+                    .success(false)
+                    .message("Booking is already cancelled")
+                    .bookingId(bookingId)
+                    .statusId(statusId)
+                    .guestId(guestId)
+                    .status(status)
+                    .build();
+        }
+        
+        // Cancel booking directly using GraphQL
         try {
             Map<String, Object> response = cancelBookingInGraphQL(bookingId);
             if (response != null && response.containsKey("updateBooking")) {

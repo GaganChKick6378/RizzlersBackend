@@ -92,4 +92,43 @@ public class BookingCancellationController {
             return ResponseEntity.badRequest().body(response);
         }
     }
+    
+    /**
+     * Cancel booking directly for authenticated users with Cognito tokens
+     * 
+     * @param request The booking cancellation request with ID token
+     * @return Response with cancellation details
+     */
+    @PostMapping("/authenticated")
+    @Operation(summary = "Authenticated cancellation", description = "Cancel booking directly for authenticated users with Cognito ID token")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Booking cancelled successfully",
+                     content = @Content(schema = @Schema(implementation = BookingCancellationResponse.class))),
+        @ApiResponse(responseCode = "400", description = "Invalid token or request",
+                     content = @Content(schema = @Schema(implementation = BookingCancellationResponse.class))),
+        @ApiResponse(responseCode = "401", description = "Authentication failed",
+                     content = @Content(schema = @Schema(implementation = BookingCancellationResponse.class)))
+    })
+    public ResponseEntity<BookingCancellationResponse> authenticatedCancellation(
+            @Parameter(description = "Booking cancellation request with ID token", required = true)
+            @Valid @RequestBody BookingCancellationRequest request) {
+        log.info("Received authenticated cancellation request for booking ID: {}, guest ID: {}", 
+                request.getBookingId(), request.getGuestId());
+        
+        if (request.getIdToken() == null || request.getIdToken().trim().isEmpty()) {
+            return ResponseEntity.status(401).body(
+                    BookingCancellationResponse.error("ID token is required"));
+        }
+        
+        BookingCancellationResponse response = bookingCancellationService.authenticatedCancellation(
+                request.getGuestId(), request.getBookingId(), request.getIdToken());
+        
+        if (response.isSuccess()) {
+            return ResponseEntity.ok(response);
+        } else if (response.getMessage() != null && response.getMessage().contains("Authentication failed")) {
+            return ResponseEntity.status(401).body(response);
+        } else {
+            return ResponseEntity.badRequest().body(response);
+        }
+    }
 } 

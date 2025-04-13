@@ -41,7 +41,7 @@ public class HousekeepingStaff {
     private Integer propertyId;
     
     @Enumerated(EnumType.STRING)
-    @Column(name = "skill_level", nullable = false)
+    @Column(name = "skill_level", nullable = false, columnDefinition = "staff_skill_level_enum")
     private StaffSkillLevel skillLevel;
     
     @CreationTimestamp

@@ -9,15 +9,22 @@ import com.kdu.rizzlers.entity.HousekeepingUser;
 import com.kdu.rizzlers.entity.PropertyPreferences;
 import com.kdu.rizzlers.entity.Shift;
 import com.kdu.rizzlers.entity.StaffAbsence;
+import com.kdu.rizzlers.entity.StaffSkillLevel;
+import com.kdu.rizzlers.repository.HousekeepingStaffRepository;
 import com.kdu.rizzlers.service.HousekeepingService;
 import com.kdu.rizzlers.service.HousekeepingUserService;
+import org.hibernate.Hibernate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import lombok.extern.slf4j.Slf4j;
 
 import jakarta.validation.Valid;
 import java.time.LocalDate;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -25,16 +32,20 @@ import java.util.stream.Collectors;
  */
 @RestController
 @RequestMapping("/housekeeping/admin")
+@Slf4j
 public class AdminController {
 
     private final HousekeepingService housekeepingService;
     private final HousekeepingUserService userService;
+    private final HousekeepingStaffRepository staffRepository;
 
     public AdminController(
             HousekeepingService housekeepingService,
-            HousekeepingUserService userService) {
+            HousekeepingUserService userService,
+            HousekeepingStaffRepository staffRepository) {
         this.housekeepingService = housekeepingService;
         this.userService = userService;
+        this.staffRepository = staffRepository;
     }
 
     /**
@@ -89,18 +100,94 @@ public class AdminController {
      * Create a new staff member
      */
     @PostMapping("/staff")
-    public ResponseEntity<HousekeepingStaff> createStaffMember(@Valid @RequestBody HousekeepingStaff staff) {
-        HousekeepingStaff createdStaff = housekeepingService.createStaffMember(staff);
-        return ResponseEntity.status(HttpStatus.CREATED).body(createdStaff);
+    public ResponseEntity<?> createStaffMember(@Valid @RequestBody HousekeepingStaff staff) {
+        try {
+            // Validation
+            if (staff.getStaffName() == null || staff.getStaffName().trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Staff name is required"));
+            }
+            
+            if (staff.getPropertyId() == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Property ID is required"));
+            }
+            
+            if (staff.getSkillLevel() == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Skill level is required"));
+            }
+            
+            // Ensure the skill level is a valid enum value
+            try {
+                StaffSkillLevel skillLevel = staff.getSkillLevel();
+                // If we get here, the enum value is valid
+                log.info("Using skill level: {}", skillLevel);
+            } catch (IllegalArgumentException e) {
+                // The enum value is invalid
+                return ResponseEntity.badRequest().body(Map.of(
+                    "error", "Invalid skill level",
+                    "message", "Valid values are: " + Arrays.toString(StaffSkillLevel.values())
+                ));
+            }
+            
+            // Create staff member
+            HousekeepingStaff createdStaff = housekeepingService.createStaffMember(staff);
+            
+            // Convert to simplified Map to avoid serialization issues with lazy-loaded associations
+            Map<String, Object> staffResponse = new HashMap<>();
+            staffResponse.put("staffId", createdStaff.getStaffId());
+            staffResponse.put("staffName", createdStaff.getStaffName());
+            staffResponse.put("phone", createdStaff.getPhone());
+            staffResponse.put("preferredShiftId", createdStaff.getPreferredShiftId());
+            staffResponse.put("propertyId", createdStaff.getPropertyId());
+            staffResponse.put("skillLevel", createdStaff.getSkillLevel().name());
+            staffResponse.put("createdAt", createdStaff.getCreatedAt());
+            staffResponse.put("updatedAt", createdStaff.getUpdatedAt());
+            
+            return ResponseEntity.status(HttpStatus.CREATED).body(staffResponse);
+        } catch (Exception e) {
+            log.error("Error creating staff member: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                            "error", "Failed to create staff member",
+                            "message", e.getMessage()
+                    ));
+        }
     }
 
     /**
      * Get all staff by property
      */
     @GetMapping("/staff/property/{propertyId}")
-    public ResponseEntity<List<HousekeepingStaff>> getStaffByProperty(@PathVariable Integer propertyId) {
-        List<HousekeepingStaff> staff = housekeepingService.getStaffByProperty(propertyId);
-        return ResponseEntity.ok(staff);
+    public ResponseEntity<?> getStaffByProperty(@PathVariable Integer propertyId) {
+        try {
+            log.info("Fetching staff for property ID: {}", propertyId);
+            List<HousekeepingStaff> staffList = housekeepingService.getStaffByProperty(propertyId);
+            
+            // Create a simplified response to avoid serialization issues with lazy-loaded associations
+            List<Map<String, Object>> response = staffList.stream()
+                .map(staff -> {
+                    Map<String, Object> staffDto = new HashMap<>();
+                    staffDto.put("staffId", staff.getStaffId());
+                    staffDto.put("staffName", staff.getStaffName());
+                    staffDto.put("phone", staff.getPhone());
+                    staffDto.put("preferredShiftId", staff.getPreferredShiftId());
+                    staffDto.put("propertyId", staff.getPropertyId());
+                    staffDto.put("skillLevel", staff.getSkillLevel().name());
+                    staffDto.put("createdAt", staff.getCreatedAt());
+                    staffDto.put("updatedAt", staff.getUpdatedAt());
+                    return staffDto;
+                })
+                .collect(Collectors.toList());
+            
+            log.info("Retrieved {} staff members for property ID: {}", response.size(), propertyId);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error retrieving staff for property {}: {}", propertyId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "error", "Failed to retrieve staff",
+                    "message", e.getMessage()
+                ));
+        }
     }
 
     /**
@@ -168,14 +255,39 @@ public class AdminController {
      * Get all staff absences for a property and date
      */
     @GetMapping("/absences")
-    public ResponseEntity<List<StaffAbsence>> getAbsencesForPropertyAndDate(
+    public ResponseEntity<?> getAbsencesForPropertyAndDate(
             @RequestParam Integer propertyId,
             @RequestParam(required = false) LocalDate date) {
-        
-        LocalDate absenceDate = date != null ? date : LocalDate.now();
-        List<StaffAbsence> absences = housekeepingService.getAbsencesForPropertyAndDate(propertyId, absenceDate);
-        
-        return ResponseEntity.ok(absences);
+        try {
+            LocalDate absenceDate = date != null ? date : LocalDate.now();
+            List<StaffAbsence> absences = housekeepingService.getAbsencesForPropertyAndDate(propertyId, absenceDate);
+            
+            // Convert to a simplified representation to avoid lazy loading issues
+            List<Map<String, Object>> result = absences.stream()
+                .map(absence -> {
+                    Map<String, Object> dto = new HashMap<>();
+                    dto.put("staffId", absence.getId().getStaffId());
+                    dto.put("date", absence.getId().getDate());
+                    dto.put("createdAt", absence.getCreatedAt());
+                    dto.put("updatedAt", absence.getUpdatedAt());
+                    
+                    // Try to get staff name if initialized
+                    if (absence.getStaff() != null && Hibernate.isInitialized(absence.getStaff())) {
+                        dto.put("staffName", absence.getStaff().getStaffName());
+                    }
+                    
+                    return dto;
+                })
+                .collect(Collectors.toList());
+            
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Error fetching absences for property {} on date {}: {}", 
+                     propertyId, date, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                   .body(Map.of("error", "Failed to fetch absences", 
+                                "message", e.getMessage()));
+        }
     }
     
     /**
@@ -183,8 +295,23 @@ public class AdminController {
      */
     private UserResponseDTO mapToUserResponseDTO(HousekeepingUser user) {
         String staffName = null;
-        if (user.getStaffId() != null && user.getStaff() != null) {
-            staffName = user.getStaff().getStaffName();
+        
+        // Safe handling of lazy-loaded staff entity
+        try {
+            if (user.getStaffId() != null && user.getStaff() != null) {
+                // Check if proxy is initialized before calling getStaffName()
+                if (Hibernate.isInitialized(user.getStaff())) {
+                    staffName = user.getStaff().getStaffName();
+                } else {
+                    // Alternatively fetch staff name directly from repository if needed
+                    staffName = staffRepository.findById(user.getStaffId())
+                        .map(HousekeepingStaff::getStaffName)
+                        .orElse(null);
+                }
+            }
+        } catch (Exception e) {
+            // Log error but continue without failing
+            System.err.println("Error fetching staff name: " + e.getMessage());
         }
         
         return UserResponseDTO.builder()

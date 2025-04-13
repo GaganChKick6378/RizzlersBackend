@@ -147,6 +147,30 @@ resource "aws_ecs_task_definition" "app_task" {
         {
           name  = "FRONTEND_REVIEW_URL"
           value = var.frontend_review_url
+        },
+        {
+          name  = "AWS_COGNITO_REGION"
+          value = var.aws_cognito_region
+        },
+        {
+          name  = "AWS_COGNITO_USER_POOL_ID"
+          value = var.aws_cognito_user_pool_id
+        },
+        {
+          name  = "AWS_COGNITO_APP_CLIENT_ID"
+          value = var.aws_cognito_app_client_id
+        },
+        {
+          name  = "AWS_COGNITO_JWK_URL"
+          value = var.aws_cognito_jwk_url
+        },
+        {
+          name  = "JWT_SECRET"
+          value = var.jwt_secret
+        },
+        {
+          name  = "JWT_EXPIRATION"
+          value = var.jwt_expiration
         }
       ]
       

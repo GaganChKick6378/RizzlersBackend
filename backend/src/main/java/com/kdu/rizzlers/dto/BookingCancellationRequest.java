@@ -20,4 +20,7 @@ public class BookingCancellationRequest {
     
     // Used only for OTP verification
     private String otp;
+    
+    // Used for authenticated users with Cognito
+    private String idToken;
 } 
