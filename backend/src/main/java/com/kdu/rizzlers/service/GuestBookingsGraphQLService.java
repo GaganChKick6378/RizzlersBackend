@@ -154,13 +154,12 @@ public class GuestBookingsGraphQLService {
      * Fetch a guest's bookings from GraphQL
      * 
      * @param guestId the guest ID
-     * @param propertyId the property ID
      * @return List of GuestBookingDTO objects
      */
-    public List<GuestBookingDTO> fetchGuestBookings(Integer guestId, Integer propertyId) {
+    public List<GuestBookingDTO> fetchGuestBookings(Integer guestId) {
         final String query = """
-            query GetGuestBookings($guestId: Int!, $propertyId: Int!) {
-              listBookings(where: {guest_id: {equals: $guestId}, property_id: {equals: $propertyId}}) {
+            query GetGuestBookings($guestId: Int!) {
+              listBookings(where: {guest_id: {equals: $guestId}}) {
                 booking_id
                 check_in_date
                 check_out_date
@@ -187,7 +186,6 @@ public class GuestBookingsGraphQLService {
         try {
             Map<String, Object> variables = new HashMap<>();
             variables.put("guestId", guestId);
-            variables.put("propertyId", propertyId);
             
             List<Map<String, Object>> result = graphQlClient.document(query)
                 .variables(variables)
@@ -196,12 +194,12 @@ public class GuestBookingsGraphQLService {
                 .block();
                 
             if (result == null || result.isEmpty()) {
-                log.info("No bookings found for guestId={}, propertyId={}", guestId, propertyId);
+                log.info("No bookings found for guestId={}", guestId);
                 return new ArrayList<>();
             }
             
-            log.info("Retrieved {} bookings from GraphQL for guestId={}, propertyId={}", 
-                result.size(), guestId, propertyId);
+            log.info("Retrieved {} bookings from GraphQL for guestId={}", 
+                result.size(), guestId);
             
             // Convert the GraphQL response to our DTOs
             return result.stream()
