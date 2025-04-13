@@ -294,7 +294,7 @@ class GuestBookingsGraphQLServiceTest {
             .thenAnswer(inv -> Mono.just(responseList));
         
         // Act
-        List<GuestBookingDTO> results = graphQLService.fetchGuestBookings(456, 789);
+        List<GuestBookingDTO> results = graphQLService.fetchGuestBookings(456);
         
         // Assert
         assertNotNull(results);
