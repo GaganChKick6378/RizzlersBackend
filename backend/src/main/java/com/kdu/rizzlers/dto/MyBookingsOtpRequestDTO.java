@@ -19,7 +19,4 @@ public class MyBookingsOtpRequestDTO {
     @NotBlank(message = "Email is required")
     @Email(message = "Email must be valid")
     private String email;
-    
-    @Builder.Default
-    private Integer propertyId = 10; // Default property ID if not specified
 } 

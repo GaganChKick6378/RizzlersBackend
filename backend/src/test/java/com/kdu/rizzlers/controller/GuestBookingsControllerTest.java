@@ -42,11 +42,9 @@ public class GuestBookingsControllerTest extends TestBase {
         // Set up test data
         otpRequestDTO = new MyBookingsOtpRequestDTO();
         otpRequestDTO.setEmail("test@example.com");
-        otpRequestDTO.setPropertyId(1);
 
         otpVerificationDTO = new MyBookingsOtpVerificationDTO();
         otpVerificationDTO.setEmail("test@example.com");
-        otpVerificationDTO.setPropertyId(1);
         otpVerificationDTO.setOtp("123456");
 
         successResponseDTO = GuestBookingsResponseDTO.builder()
@@ -168,7 +166,6 @@ public class GuestBookingsControllerTest extends TestBase {
     public void testRequestOtp_InvalidInput() throws Exception {
         // Arrange - Create an invalid request (missing email)
         MyBookingsOtpRequestDTO invalidRequest = new MyBookingsOtpRequestDTO();
-        invalidRequest.setPropertyId(1);
         // Email is required but missing
 
         // Act & Assert
@@ -184,7 +181,6 @@ public class GuestBookingsControllerTest extends TestBase {
         // Arrange - Create an invalid verification request (missing OTP)
         MyBookingsOtpVerificationDTO invalidRequest = new MyBookingsOtpVerificationDTO();
         invalidRequest.setEmail("test@example.com");
-        invalidRequest.setPropertyId(1);
         // OTP is required but missing
 
         // Act & Assert
