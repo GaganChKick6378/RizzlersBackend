@@ -41,7 +41,6 @@ public class GuestBookingsServiceImpl implements GuestBookingsService {
     @Transactional
     public GuestBookingsResponseDTO requestOtp(MyBookingsOtpRequestDTO request) {
         String email = request.getEmail();
-        Integer propertyId = 10; // Default property ID
         
         log.info("Processing OTP request for email: {}", email);
         
@@ -66,9 +65,8 @@ public class GuestBookingsServiceImpl implements GuestBookingsService {
         user.setOtpExpiry(ZonedDateTime.now().plusMinutes(OTP_EXPIRY_MINUTES));
         userRepository.save(user);
         
-        // Get property name from GraphQL
-        String propertyName = graphQLService.fetchPropertyName(propertyId)
-                .orElse("Team 10 Hotel");  // Fallback to the property name from your example
+        // Default property name
+        String propertyName = "Team 10 Hotel";
         
         // Send OTP email
         try {
@@ -91,7 +89,6 @@ public class GuestBookingsServiceImpl implements GuestBookingsService {
     public GuestBookingsResponseDTO verifyOtpAndGetBookings(MyBookingsOtpVerificationDTO request) {
         String email = request.getEmail();
         String otp = request.getOtp();
-        Integer propertyId = 10; // Default property ID
         
         log.info("Verifying OTP for email: {}", email);
         
@@ -131,7 +128,7 @@ public class GuestBookingsServiceImpl implements GuestBookingsService {
         log.info("Successfully verified OTP for email: {}. Fetching bookings for guestId: {}", email, guestId);
         
         // Fetch bookings from GraphQL using the guest ID from user record
-        List<GuestBookingDTO> bookings = graphQLService.fetchGuestBookings(guestId, propertyId);
+        List<GuestBookingDTO> bookings = graphQLService.fetchGuestBookings(guestId);
         
         // Add room images to each booking
         for (GuestBookingDTO booking : bookings) {
@@ -149,7 +146,7 @@ public class GuestBookingsServiceImpl implements GuestBookingsService {
         }
         
         if (bookings.isEmpty()) {
-            log.info("No bookings found for guestId: {}, propertyId: {}", guestId, propertyId);
+            log.info("No bookings found for guestId: {}", guestId);
             return GuestBookingsResponseDTO.builder()
                     .success(true)
                     .message("No bookings found")
