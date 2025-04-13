@@ -19,10 +19,12 @@ import com.kdu.rizzlers.repository.StaffAbsenceRepository;
 import com.kdu.rizzlers.service.EmailService;
 import com.kdu.rizzlers.service.HousekeepingService;
 import com.kdu.rizzlers.service.TaskSchedulingService;
+import com.kdu.rizzlers.service.HousekeepingUserService;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -40,6 +42,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import java.time.ZonedDateTime;
 
 /**
  * Implementation of HousekeepingService for staff and task management
@@ -57,6 +60,8 @@ public class HousekeepingServiceImpl implements HousekeepingService {
     private final TaskSchedulingService taskSchedulingService;
     private final JavaMailSender mailSender;
     private final TemplateEngine templateEngine;
+    private final HousekeepingUserService userService;
+    private final JdbcTemplate jdbcTemplate;
     
     @Value("${spring.mail.username}")
     private String senderEmail;
@@ -73,7 +78,9 @@ public class HousekeepingServiceImpl implements HousekeepingService {
             ShiftRepository shiftRepository,
             TaskSchedulingService taskSchedulingService,
             JavaMailSender mailSender,
-            TemplateEngine templateEngine) {
+            TemplateEngine templateEngine,
+            HousekeepingUserService userService,
+            JdbcTemplate jdbcTemplate) {
         this.staffRepository = staffRepository;
         this.absenceRepository = absenceRepository;
         this.taskRepository = taskRepository;
@@ -83,6 +90,8 @@ public class HousekeepingServiceImpl implements HousekeepingService {
         this.taskSchedulingService = taskSchedulingService;
         this.mailSender = mailSender;
         this.templateEngine = templateEngine;
+        this.userService = userService;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Override
@@ -163,6 +172,11 @@ public class HousekeepingServiceImpl implements HousekeepingService {
                     shift.getStartTime(), 
                     shift.getEndTime(), 
                     tasksInShift);
+        }
+        
+        // Group tasks by staff member and send email notifications
+        if (!assignedTasks.isEmpty()) {
+            sendTaskAssignmentEmails(assignedTasks, date);
         }
         
         // Create a copy of generatedTasks to find unassigned tasks
@@ -265,7 +279,41 @@ public class HousekeepingServiceImpl implements HousekeepingService {
     @Override
     @Transactional
     public HousekeepingStaff createStaffMember(HousekeepingStaff staff) {
-        return staffRepository.save(staff);
+        log.info("Creating new staff member: {} with skill level: {}", staff.getStaffName(), staff.getSkillLevel());
+        
+        String sql = "INSERT INTO staff (staff_name, phone, preferred_shift_id, property_id, skill_level, created_at, updated_at) " +
+                     "VALUES (?, ?, ?, ?, CAST(? AS staff_skill_level_enum), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING staff_id";
+
+        try {
+            // Execute insert using JdbcTemplate and get the returned staff_id
+            Integer staffId = jdbcTemplate.queryForObject(sql,
+                    new Object[]{ // Pass parameters in the correct order
+                            staff.getStaffName(),
+                            staff.getPhone(),
+                            staff.getPreferredShiftId(),
+                            staff.getPropertyId(),
+                            staff.getSkillLevel().name() // Pass enum name as String
+                    },
+                    Integer.class); // Specify the expected return type
+
+            if (staffId == null) {
+                throw new RuntimeException("Failed to retrieve generated staff ID after insert.");
+            }
+
+            log.info("JdbcTemplate inserted staff, received ID: {}", staffId);
+
+            // Reload the created staff using the returned ID via the repository
+            // Use orElseThrow for cleaner null handling
+            HousekeepingStaff savedStaff = staffRepository.findById(staffId)
+                    .orElseThrow(() -> new RuntimeException("Failed to retrieve created staff immediately after insert. ID: " + staffId));
+
+            log.info("Successfully created and retrieved staff member with ID: {}", savedStaff.getStaffId());
+            return savedStaff;
+        } catch (Exception e) {
+            log.error("Error creating staff member using JdbcTemplate: {}", e.getMessage(), e);
+            // Consider throwing a more specific application exception
+            throw new RuntimeException("Failed to create staff member", e);
+        }
     }
 
     @Override
@@ -299,7 +347,7 @@ public class HousekeepingServiceImpl implements HousekeepingService {
      * Scheduled method that runs daily to generate and assign tasks based on room bookings.
      * This creates cleaning tasks for all properties and automatically assigns them to available staff.
      */
-    @Scheduled(cron = "0 05 03 * * *") // Run at 6:00 AM every day
+    @Scheduled(cron = "0 14 18 * * *") // Run at 6:00 AM every day
     @Transactional
     public void generateAndAssignDailyTasks() {
         log.info("Starting daily task generation and assignment for all properties...");
@@ -430,5 +478,60 @@ public class HousekeepingServiceImpl implements HousekeepingService {
             log.error("Unexpected error sending staff shortfall notification: {}", e.getMessage(), e);
             return false;
         }
+    }
+
+    /**
+     * Sends email notifications to staff members with their assigned tasks for the day
+     * 
+     * @param assignedTasks List of tasks assigned to staff members
+     * @param date The date for which the tasks are assigned
+     */
+    private void sendTaskAssignmentEmails(List<TaskAssignmentDTO> assignedTasks, LocalDate date) {
+        // Group tasks by staff ID
+        Map<Integer, List<TaskAssignmentDTO>> tasksByStaff = assignedTasks.stream()
+                .collect(Collectors.groupingBy(TaskAssignmentDTO::getStaffId));
+        
+        // Send email to each staff member
+        tasksByStaff.forEach((staffId, staffTasks) -> {
+            try {
+                // Find the staff member's email from housekeeping_users table
+                Optional<String> emailOpt = userService.findEmailByStaffId(staffId);
+                
+                if (emailOpt.isEmpty()) {
+                    log.warn("Could not find email for staff ID {}, skipping task notification", staffId);
+                    return;
+                }
+                
+                String email = emailOpt.get();
+                String staffName = staffTasks.get(0).getStaffName(); // All tasks have the same staff name
+                
+                // Create and send the email
+                MimeMessage message = mailSender.createMimeMessage();
+                MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+                
+                // Set email properties
+                helper.setFrom(senderEmail);
+                helper.setTo(email);
+                helper.setSubject("Your Cleaning Tasks for " + date.format(DateTimeFormatter.ISO_LOCAL_DATE));
+                
+                // Prepare the context for the template
+                Context context = new Context();
+                context.setVariable("staffName", staffName);
+                context.setVariable("date", date);
+                context.setVariable("tasks", staffTasks);
+                
+                // Process the template
+                String emailContent = templateEngine.process("staff-daily-tasks", context);
+                helper.setText(emailContent, true);
+                
+                // Send the email
+                mailSender.send(message);
+                log.info("Task assignment email sent to {} ({}) for date {}", staffName, email, date);
+            } catch (MessagingException e) {
+                log.error("Failed to send task assignment email to staff {}: {}", staffId, e.getMessage(), e);
+            } catch (Exception e) {
+                log.error("Unexpected error sending task assignment email to staff {}: {}", staffId, e.getMessage(), e);
+            }
+        });
     }
 }

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Your Housekeeping Tasks</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .header {
+            background-color: #3498db;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .content {
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-top: none;
+            border-radius: 0 0 5px 5px;
+        }
+        .summary {
+            background-color: #f8f9fa;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.8em;
+            color: #777;
+        }
+        .task-info {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Your Cleaning Tasks</h1>
+    </div>
+    
+    <div class="content">
+        <div class="summary">
+            <h2>Hello, <span th:text="${staffName}">Staff Name</span>!</h2>
+            <p>Here are your assigned tasks for <strong th:text="${date}">2025-04-12</strong>:</p>
+        </div>
+        
+        <h3>Task Schedule</h3>
+        <p>Please complete the following tasks according to the schedule below:</p>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Room</th>
+                    <th>Task Type</th>
+                    <th>Duration</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr th:each="task : ${tasks}">
+                    <td th:text="${#temporals.format(task.startTime, 'HH:mm')}">10:00</td>
+                    <td th:text="${task.externalRoomId}">Room 101</td>
+                    <td th:text="${task.taskTypeName}">STANDARD_CLEANING</td>
+                    <td th:text="${task.duration != null ? task.duration.toMinutes() + ' minutes' : '30 minutes'}">30 minutes</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <div class="task-info">
+            <h3>Important Reminders</h3>
+            <ul>
+                <li>Please complete all tasks within the scheduled time frames</li>
+                <li>Record task completion in the staff mobile app</li>
+                <li>Report any issues with rooms or equipment to your supervisor</li>
+                <li>Prioritize immediate checkout cleanings when required</li>
+            </ul>
+        </div>
+        
+        <p>Thank you for your dedicated service!</p>
+    </div>
+    
+    <div class="footer">
+        <p>This is an automated message from the Housekeeping Management System.</p>
+        <p>If you have any questions, please contact your supervisor.</p>
+    </div>
+</body>
+</html> 

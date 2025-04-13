@@ -73,6 +73,16 @@ jobs:
           graphql_endpoint = "${{ secrets.GRAPHQL_ENDPOINT }}"
           graphql_api_key  = "${{ secrets.GRAPHQL_API_KEY }}"
 
+          # AWS Cognito configuration
+          aws_cognito_region = "${{ secrets.AWS_COGNITO_REGION }}"
+          aws_cognito_user_pool_id = "${{ secrets.AWS_COGNITO_USER_POOL_ID }}"
+          aws_cognito_app_client_id = "${{ secrets.AWS_COGNITO_APP_CLIENT_ID }}"
+          aws_cognito_jwk_url = "https://cognito-idp.${{ secrets.AWS_COGNITO_REGION }}.amazonaws.com/${{ secrets.AWS_COGNITO_USER_POOL_ID }}/.well-known/jwks.json"
+
+          # JWT Configuration
+          jwt_secret = "${{ secrets.JWT_SECRET }}"
+          jwt_expiration = "${{ secrets.JWT_EXPIRATION }}"
+
           # Security and Email configuration
           encryption_secret_key = "${{ secrets.ENCRYPTION_SECRET_KEY }}"
           email_app_password = "${{ secrets.EMAIL_APP_PASSWORD }}"
@@ -176,6 +186,12 @@ jobs:
             --build-arg database_password="${{ secrets.DB_PASSWORD }}" \
             --build-arg graphql_endpoint="${{ secrets.GRAPHQL_ENDPOINT }}" \
             --build-arg graphql_api_key="${{ secrets.GRAPHQL_API_KEY }}" \
+            --build-arg aws_cognito_region="${{ secrets.AWS_COGNITO_REGION }}" \
+            --build-arg aws_cognito_user_pool_id="${{ secrets.AWS_COGNITO_USER_POOL_ID }}" \
+            --build-arg aws_cognito_app_client_id="${{ secrets.AWS_COGNITO_APP_CLIENT_ID }}" \
+            --build-arg aws_cognito_jwk_url="https://cognito-idp.${{ secrets.AWS_COGNITO_REGION }}.amazonaws.com/${{ secrets.AWS_COGNITO_USER_POOL_ID }}/.well-known/jwks.json" \
+            --build-arg jwt_secret="${{ secrets.JWT_SECRET }}" \
+            --build-arg jwt_expiration="${{ secrets.JWT_EXPIRATION }}" \
             --build-arg container_port="8080" \
             --build-arg allowed_origins="http://localhost:3000,https://d327h6huibdsc6.cloudfront.net/,chrome-extension://gmehhhfompinmcoabokhckceachkjmha" \
             --build-arg ENV="qa" \
