@@ -41,9 +41,9 @@ public class GuestBookingsServiceImpl implements GuestBookingsService {
     @Transactional
     public GuestBookingsResponseDTO requestOtp(MyBookingsOtpRequestDTO request) {
         String email = request.getEmail();
-        Integer propertyId = request.getPropertyId();
+        Integer propertyId = 10; // Default property ID
         
-        log.info("Processing OTP request for email: {}, propertyId: {}", email, propertyId);
+        log.info("Processing OTP request for email: {}", email);
         
         // Find user by email
         Optional<User> userOpt = userRepository.findByEmail(email);
@@ -91,9 +91,9 @@ public class GuestBookingsServiceImpl implements GuestBookingsService {
     public GuestBookingsResponseDTO verifyOtpAndGetBookings(MyBookingsOtpVerificationDTO request) {
         String email = request.getEmail();
         String otp = request.getOtp();
-        Integer propertyId = request.getPropertyId();
+        Integer propertyId = 10; // Default property ID
         
-        log.info("Verifying OTP for email: {}, propertyId: {}", email, propertyId);
+        log.info("Verifying OTP for email: {}", email);
         
         // Find user by email
         Optional<User> userOpt = userRepository.findByEmail(email);

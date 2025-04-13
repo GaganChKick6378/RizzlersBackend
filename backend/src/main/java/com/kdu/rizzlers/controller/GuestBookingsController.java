@@ -35,7 +35,7 @@ public class GuestBookingsController {
     /**
      * Request an OTP for accessing "My Bookings"
      * 
-     * @param request DTO containing email and property ID
+     * @param request DTO containing email
      * @return Response DTO with status information
      */
     @PostMapping("/request-otp")
@@ -45,9 +45,9 @@ public class GuestBookingsController {
                     content = @Content(schema = @Schema(implementation = GuestBookingsResponseDTO.class)))
     })
     public ResponseEntity<GuestBookingsResponseDTO> requestOtp(
-            @Parameter(description = "Request containing email and property ID", required = true)
+            @Parameter(description = "Request containing email", required = true)
             @Valid @RequestBody MyBookingsOtpRequestDTO request) {
-        log.info("Received request for OTP from email: {}, propertyId: {}", request.getEmail(), request.getPropertyId());
+        log.info("Received request for OTP from email: {}", request.getEmail());
         
         GuestBookingsResponseDTO response = guestBookingsService.requestOtp(request);
         
@@ -57,7 +57,7 @@ public class GuestBookingsController {
     /**
      * Verify OTP and retrieve bookings
      * 
-     * @param request DTO containing email, OTP, and property ID
+     * @param request DTO containing email and OTP
      * @return Response DTO with bookings list or error message
      */
     @PostMapping("/verify-otp")
@@ -68,10 +68,9 @@ public class GuestBookingsController {
                     content = @Content(schema = @Schema(implementation = GuestBookingsResponseDTO.class)))
     })
     public ResponseEntity<GuestBookingsResponseDTO> verifyOtpAndGetBookings(
-            @Parameter(description = "Request containing email, OTP, and property ID", required = true)
+            @Parameter(description = "Request containing email and OTP", required = true)
             @Valid @RequestBody MyBookingsOtpVerificationDTO request) {
-        log.info("Received OTP verification request from email: {}, propertyId: {}", 
-                request.getEmail(), request.getPropertyId());
+        log.info("Received OTP verification request from email: {}", request.getEmail());
         
         GuestBookingsResponseDTO response = guestBookingsService.verifyOtpAndGetBookings(request);
         
