@@ -24,7 +24,4 @@ public class MyBookingsOtpVerificationDTO {
     @NotBlank(message = "OTP is required")
     @Pattern(regexp = "^[0-9]{6}$", message = "OTP must be a 6-digit number")
     private String otp;
-    
-    @Builder.Default
-    private Integer propertyId = 10; // Default property ID if not specified
 } 

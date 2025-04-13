@@ -12,7 +12,7 @@ public interface GuestBookingsService {
     /**
      * Request OTP for accessing "My Bookings"
      * 
-     * @param request DTO containing the email and property ID
+     * @param request DTO containing the email
      * @return ResponseDTO with status of the OTP request
      */
     GuestBookingsResponseDTO requestOtp(MyBookingsOtpRequestDTO request);
@@ -20,7 +20,7 @@ public interface GuestBookingsService {
     /**
      * Verify OTP and retrieve guest bookings if valid
      * 
-     * @param request DTO containing the email, OTP, and property ID
+     * @param request DTO containing the email and OTP
      * @return ResponseDTO with list of bookings or error message
      */
     GuestBookingsResponseDTO verifyOtpAndGetBookings(MyBookingsOtpVerificationDTO request);
