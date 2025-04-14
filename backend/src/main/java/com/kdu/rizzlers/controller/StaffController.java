@@ -8,6 +8,13 @@ import com.kdu.rizzlers.entity.HousekeepingUser;
 import com.kdu.rizzlers.entity.StaffAbsence;
 import com.kdu.rizzlers.service.HousekeepingService;
 import com.kdu.rizzlers.service.HousekeepingUserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -23,6 +30,7 @@ import java.util.Optional;
  */
 @RestController
 @RequestMapping("/housekeeping/staff")
+@Tag(name = "Staff", description = "APIs for staff housekeeping operations")
 public class StaffController {
 
     private final HousekeepingService housekeepingService;
@@ -39,6 +47,12 @@ public class StaffController {
      * Get current user profile
      */
     @GetMapping("/profile")
+    @Operation(summary = "Get current user profile", description = "Retrieves the profile of the currently authenticated user")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Successfully retrieved user profile",
+                content = @Content(schema = @Schema(implementation = UserResponseDTO.class))),
+        @ApiResponse(responseCode = "404", description = "User not found")
+    })
     public ResponseEntity<UserResponseDTO> getCurrentUserProfile() {
         String username = getCurrentUsername();
         Optional<HousekeepingUser> userOpt = userService.getUserByUsername(username);
@@ -70,6 +84,11 @@ public class StaffController {
      * Change current user's password
      */
     @PutMapping("/profile/password")
+    @Operation(summary = "Change password", description = "Changes the password for the currently authenticated user")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Password changed successfully"),
+        @ApiResponse(responseCode = "404", description = "User not found")
+    })
     public ResponseEntity<Void> changePassword(@Valid @RequestBody PasswordChangeRequestDTO request) {
         String username = getCurrentUsername();
         Optional<HousekeepingUser> userOpt = userService.getUserByUsername(username);
@@ -86,6 +105,11 @@ public class StaffController {
      * Apply for sick leave
      */
     @PostMapping("/sick-leave")
+    @Operation(summary = "Apply for sick leave", description = "Submit a sick leave request for a staff member")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Sick leave application successful"),
+        @ApiResponse(responseCode = "400", description = "Bad request - invalid user or not authorized")
+    })
     public ResponseEntity<String> applyForSickLeave(@Valid @RequestBody StaffAbsenceDTO absenceDTO) {
         String username = getCurrentUsername();
         Optional<HousekeepingUser> userOpt = userService.getUserByUsername(username);
@@ -113,7 +137,13 @@ public class StaffController {
      * Get staff absences
      */
     @GetMapping("/sick-leave/{staffId}")
-    public ResponseEntity<List<StaffAbsence>> getStaffAbsences(@PathVariable Integer staffId) {
+    @Operation(summary = "Get staff absences", description = "Retrieves absence records for a specific staff member")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Successfully retrieved absences"),
+        @ApiResponse(responseCode = "400", description = "Bad request - invalid user or not authorized")
+    })
+    public ResponseEntity<List<StaffAbsence>> getStaffAbsences(
+            @Parameter(description = "ID of the staff member") @PathVariable Integer staffId) {
         String username = getCurrentUsername();
         Optional<HousekeepingUser> userOpt = userService.getUserByUsername(username);
         
@@ -135,9 +165,14 @@ public class StaffController {
      * Get staff tasks for a specific date
      */
     @GetMapping("/tasks/{staffId}")
+    @Operation(summary = "Get staff tasks", description = "Retrieves tasks assigned to a specific staff member for a given date")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Successfully retrieved tasks"),
+        @ApiResponse(responseCode = "400", description = "Bad request - invalid user or not authorized")
+    })
     public ResponseEntity<List<TaskAssignmentDTO>> getStaffTasks(
-            @PathVariable Integer staffId,
-            @RequestParam(required = false) LocalDate date) {
+            @Parameter(description = "ID of the staff member") @PathVariable Integer staffId,
+            @Parameter(description = "Date to retrieve tasks for (default: current date)") @RequestParam(required = false) LocalDate date) {
         
         String username = getCurrentUsername();
         Optional<HousekeepingUser> userOpt = userService.getUserByUsername(username);
