@@ -254,7 +254,8 @@ public class EmailOtpServiceImpl implements EmailOtpService {
     @Override
     @Transactional
     public int cleanupExpiredOtps() {
-        ZonedDateTime now = ZonedDateTime.now();
+        // Use Asia/Kolkata timezone for consistency across the application
+        ZonedDateTime now = ZonedDateTime.now(java.time.ZoneId.of("Asia/Kolkata"));
         log.info("Starting expired OTP cleanup task at {}", now);
         
         try {

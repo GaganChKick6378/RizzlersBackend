@@ -354,7 +354,10 @@ public class HousekeepingServiceImpl implements HousekeepingService {
         
         // Get all properties
         List<PropertyPreferences> properties = propertyPreferencesRepository.findAll();
-        LocalDate today = LocalDate.now();
+        
+        // Use ZonedDateTime with the correct timezone to get the current date
+        LocalDate today = ZonedDateTime.now(java.time.ZoneId.of("Asia/Kolkata")).toLocalDate();
+        log.info("Generating tasks for date: {}", today);
         
         for (PropertyPreferences property : properties) {
             try {
@@ -381,7 +384,10 @@ public class HousekeepingServiceImpl implements HousekeepingService {
         
         // Get all properties
         List<PropertyPreferences> properties = propertyPreferencesRepository.findAll();
-        LocalDate today = LocalDate.now();
+        
+        // Use ZonedDateTime with the correct timezone to get the current date
+        LocalDate today = ZonedDateTime.now(java.time.ZoneId.of("Asia/Kolkata")).toLocalDate();
+        log.info("Updating tasks for date: {}", today);
         
         for (PropertyPreferences property : properties) {
             try {
