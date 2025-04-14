@@ -25,7 +25,8 @@ public class OtpCleanupServiceImpl {
      */
     @Transactional
     public int clearExpiredOtps() {
-        ZonedDateTime now = ZonedDateTime.now();
+        // Use Asia/Kolkata timezone for consistency across the application
+        ZonedDateTime now = ZonedDateTime.now(java.time.ZoneId.of("Asia/Kolkata"));
         log.info("Starting scheduled expired OTP cleanup task at {}", now);
         
         try {
