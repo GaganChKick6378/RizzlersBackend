@@ -426,20 +426,11 @@ public class BookingServiceImpl implements BookingService {
             }
             
             // First check if a lock already exists (nonexclusive read)
-            // Check for PENDING or CONFIRMED locks, ignore EXPIRED or RELEASED
-            ZonedDateTime now = ZonedDateTime.now();
-            List<BookingLock> existingLocks = bookingLockRepository.findByRoomIdAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
-                    roomId, endDate, startDate);
+            Optional<BookingLock> existingLock = bookingLockRepository.findByRoomIdAndStartDateAndEndDateAndStatus(
+                    roomId, startDate, endDate, BookingLock.BookingLockStatus.PENDING);
             
-            // Filter out expired locks (where lockExpiry is before now)
-            List<BookingLock> validLocks = existingLocks.stream()
-                    .filter(lock -> lock.getStatus() == BookingLock.BookingLockStatus.PENDING || 
-                                   lock.getStatus() == BookingLock.BookingLockStatus.CONFIRMED)
-                    .filter(lock -> lock.getLockExpiry().isAfter(now))
-                    .collect(Collectors.toList());
-            
-            if (!validLocks.isEmpty()) {
-                log.info("Room {} already has valid lock(s) for the requested dates", roomId);
+            if (existingLock.isPresent()) {
+                log.info("Room {} already has a pending lock for the requested dates", roomId);
                 return Optional.empty();
             }
             
@@ -458,43 +449,32 @@ public class BookingServiceImpl implements BookingService {
                     .build();
             
             try {
-                // Save first to generate ID
                 lock = bookingLockRepository.save(lock);
-                
-                // Flush in a try-catch block to handle constraint violations properly
-                try {
-                    bookingLockRepository.flush();
-                } catch (org.springframework.dao.DataIntegrityViolationException e) {
-                    // Check if this is an exclusion constraint violation (overlapping date range)
-                    Throwable cause = e.getCause();
-                    if (cause != null && cause.getCause() instanceof PSQLException) {
-                        PSQLException psqlException = (PSQLException) cause.getCause();
-                        String sqlState = psqlException.getSQLState();
-                        String message = psqlException.getMessage();
-                        
-                        // Check for exclusion constraint violation (SQL state 23P01)
-                        if ("23P01".equals(sqlState) || message.contains("no_overlapping_bookings")) {
-                            log.warn("Overlapping booking detected for room {}, dates {} to {}", 
-                                    roomId, startDate, endDate);
-                            throw new OverlappingBookingException("This room is already booked for the selected dates",
-                                    roomId, startDate.toString(), endDate.toString());
-                        }
-                    }
-                    
-                    // Another transaction created the lock first - expected in concurrent scenarios
-                    log.info("Concurrent lock attempt for room {}: {}", roomId, e.getMessage());
-                    return Optional.empty();
-                }
+                bookingLockRepository.flush(); // Flush to ensure the constraint is checked
                 
                 log.info("Lock acquired by server {} for room {}, dates {} to {}", 
                         serverId, roomId, startDate, endDate);
                 return Optional.of(lock);
                 
-            } catch (OverlappingBookingException e) {
-                // Rethrow OverlappingBookingException for proper handling at caller level
-                throw e;
-            } catch (Exception e) {
-                log.error("Error saving booking lock: {}", e.getMessage(), e);
+            } catch (org.springframework.dao.DataIntegrityViolationException e) {
+                // Check if this is an exclusion constraint violation (overlapping date range)
+                Throwable cause = e.getCause();
+                if (cause != null && cause.getCause() instanceof PSQLException) {
+                    PSQLException psqlException = (PSQLException) cause.getCause();
+                    String sqlState = psqlException.getSQLState();
+                    String message = psqlException.getMessage();
+                    
+                    // Check for exclusion constraint violation (SQL state 23P01)
+                    if ("23P01".equals(sqlState) || message.contains("no_overlapping_bookings")) {
+                        log.warn("Overlapping booking detected for room {}, dates {} to {}", 
+                                roomId, startDate, endDate);
+                        throw new OverlappingBookingException("This room is already booked for the selected dates",
+                                roomId, startDate.toString(), endDate.toString());
+                    }
+                }
+                
+                // Another transaction created the lock first - expected in concurrent scenarios
+                log.info("Concurrent lock attempt for room {}: {}", roomId, e.getMessage());
                 return Optional.empty();
             }
         } catch (OverlappingBookingException e) {
@@ -562,25 +542,16 @@ public class BookingServiceImpl implements BookingService {
             LocalDate endDate) {
         
         try {
-            ZonedDateTime now = ZonedDateTime.now();
-            
             // Find all locks for the given room IDs that overlap with the requested dates
-            List<BookingLock> allLocks = bookingLockRepository.findByRoomIdInAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
-                    availableRoomIds, endDate, startDate);
+            List<BookingLock> locks = bookingLockRepository.findByRoomIdInAndStartDateLessThanEqualAndEndDateGreaterThanEqualAndStatus(
+                    availableRoomIds, endDate, startDate, BookingLock.BookingLockStatus.PENDING);
             
-            // Filter to only include active locks (PENDING or CONFIRMED) that haven't expired
-            List<BookingLock> validLocks = allLocks.stream()
-                    .filter(lock -> (lock.getStatus() == BookingLock.BookingLockStatus.PENDING || 
-                                    lock.getStatus() == BookingLock.BookingLockStatus.CONFIRMED))
-                    .filter(lock -> lock.getLockExpiry().isAfter(now))
-                    .collect(Collectors.toList());
-            
-            if (validLocks.isEmpty()) {
+            if (locks.isEmpty()) {
                 return availableRoomIds;
             }
             
             // Extract the IDs of locked rooms
-            Set<Integer> lockedRoomIds = validLocks.stream()
+            Set<Integer> lockedRoomIds = locks.stream()
                     .map(BookingLock::getRoomId)
                     .collect(Collectors.toSet());
             
@@ -604,33 +575,30 @@ public class BookingServiceImpl implements BookingService {
             // First, find all expired locks
             List<BookingLock> expiredLocks = bookingLockRepository.findExpiredLocks(now);
             if (expiredLocks.isEmpty()) {
-                return 0;
+                log.info("No newly expired locks found");
+            } else {
+                log.info("Found {} expired locks to clean up", expiredLocks.size());
             }
             
-            log.info("Found {} expired locks to clean up", expiredLocks.size());
-            int successCount = 0;
+            // Delete expired locks directly using repository method
+            int deletedCount = bookingLockRepository.deleteExpiredLocks(now);
             
-            // Process each expired lock individually to handle optimistic locking
-            for (BookingLock lock : expiredLocks) {
-                try {
-                    // Update the status to EXPIRED instead of deleting to keep history
-                    lock.setStatus(BookingLock.BookingLockStatus.EXPIRED);
-                    lock.setStatusUpdatedAt(now);
-                    bookingLockRepository.save(lock);
-                    successCount++;
-                } catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
-                    log.info("Optimistic lock failure when updating expired lock {}: {}", 
-                            lock.getId(), e.getMessage());
-                    // This is expected in concurrent scenarios, so we don't count it as an error
-                } catch (Exception e) {
-                    log.error("Error updating expired lock {}: {}", lock.getId(), e.getMessage());
-                }
+            // Also delete any locks that were previously marked as EXPIRED but not deleted
+            int oldExpiredCount = bookingLockRepository.deleteExpiredStatusLocks();
+            
+            // Also delete any locks with RELEASED status
+            int releasedCount = bookingLockRepository.deleteReleasedStatusLocks();
+            
+            int totalDeleted = deletedCount + oldExpiredCount + releasedCount;
+            
+            if (totalDeleted > 0) {
+                log.info("Successfully deleted {} locks: {} newly expired, {} with EXPIRED status, {} with RELEASED status", 
+                        totalDeleted, deletedCount, oldExpiredCount, releasedCount);
             }
             
-            log.info("Successfully updated {} expired locks", successCount);
-            return successCount;
+            return totalDeleted;
         } catch (Exception e) {
-            log.error("Error cleaning up expired locks: {}", e.getMessage(), e);
+            log.error("Error cleaning up locks: {}", e.getMessage(), e);
             return 0;
         }
     }

@@ -35,20 +35,6 @@ public interface BookingLockRepository extends JpaRepository<BookingLock, Long>,
             BookingLock.BookingLockStatus status);
     
     /**
-     * Find booking locks for a single room that overlap with the given date range
-     * regardless of status
-     *
-     * @param roomId the room ID
-     * @param endDate the end date
-     * @param startDate the start date
-     * @return List of overlapping booking locks
-     */
-    List<BookingLock> findByRoomIdAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
-            Integer roomId,
-            LocalDate endDate,
-            LocalDate startDate);
-    
-    /**
      * Find all active booking locks for a list of room IDs
      * 
      * @param roomIds list of room IDs to check
@@ -62,20 +48,6 @@ public interface BookingLockRepository extends JpaRepository<BookingLock, Long>,
             LocalDate endDate, 
             LocalDate startDate, 
             BookingLock.BookingLockStatus status);
-    
-    /**
-     * Find all booking locks for a list of room IDs that overlap with the given date range
-     * regardless of status
-     *
-     * @param roomIds list of room IDs to check
-     * @param endDate the end date
-     * @param startDate the start date
-     * @return List of booking locks
-     */
-    List<BookingLock> findByRoomIdInAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
-            List<Integer> roomIds,
-            LocalDate endDate,
-            LocalDate startDate);
     
     /**
      * Update status of expired booking locks
@@ -120,6 +92,24 @@ public interface BookingLockRepository extends JpaRepository<BookingLock, Long>,
     @Modifying
     @Query("DELETE FROM BookingLock bl WHERE bl.lockExpiry < :currentTime AND bl.status IN (com.kdu.rizzlers.entity.BookingLock.BookingLockStatus.PENDING, com.kdu.rizzlers.entity.BookingLock.BookingLockStatus.CONFIRMED)")
     int deleteExpiredLocks(ZonedDateTime currentTime);
+    
+    /**
+     * Delete all booking locks with EXPIRED status
+     * 
+     * @return number of records deleted
+     */
+    @Modifying
+    @Query("DELETE FROM BookingLock bl WHERE bl.status = com.kdu.rizzlers.entity.BookingLock.BookingLockStatus.EXPIRED")
+    int deleteExpiredStatusLocks();
+    
+    /**
+     * Delete all booking locks with RELEASED status
+     * 
+     * @return number of records deleted
+     */
+    @Modifying
+    @Query("DELETE FROM BookingLock bl WHERE bl.status = com.kdu.rizzlers.entity.BookingLock.BookingLockStatus.RELEASED")
+    int deleteReleasedStatusLocks();
     
     /**
      * Find all expired locks with PENDING or CONFIRMED status

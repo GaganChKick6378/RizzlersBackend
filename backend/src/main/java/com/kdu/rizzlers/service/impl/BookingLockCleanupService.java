@@ -19,9 +19,10 @@ public class BookingLockCleanupService {
     }
 
     /**
-     * Scheduled task to clean up expired locks every 5 minutes
+     * Scheduled task to clean up expired locks every minute
+     * Deletes expired locks from the database instead of marking them as EXPIRED
      */
-    @Scheduled(fixedRate = 300000) // Run every 5 minutes (300,000 ms)
+    @Scheduled(fixedRate = 300000) // Run every 3 minute (60,000 ms)
     public void scheduledLockCleanup() {
         try {
             log.info("Running scheduled booking lock cleanup");
