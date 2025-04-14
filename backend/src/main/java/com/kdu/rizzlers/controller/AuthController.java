@@ -64,6 +64,12 @@ public class AuthController {
      * Login endpoint
      */
     @PostMapping("/login")
+    @Operation(summary = "Login", description = "Authenticates a user and returns a JWT token")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Successfully authenticated"),
+        @ApiResponse(responseCode = "401", description = "Invalid username or password"),
+        @ApiResponse(responseCode = "500", description = "Authentication failed due to server error")
+    })
     public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
         try {
             // Authenticate the user
