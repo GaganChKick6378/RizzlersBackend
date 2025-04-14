@@ -94,6 +94,24 @@ public interface BookingLockRepository extends JpaRepository<BookingLock, Long>,
     int deleteExpiredLocks(ZonedDateTime currentTime);
     
     /**
+     * Delete all booking locks with EXPIRED status
+     * 
+     * @return number of records deleted
+     */
+    @Modifying
+    @Query("DELETE FROM BookingLock bl WHERE bl.status = com.kdu.rizzlers.entity.BookingLock.BookingLockStatus.EXPIRED")
+    int deleteExpiredStatusLocks();
+    
+    /**
+     * Delete all booking locks with RELEASED status
+     * 
+     * @return number of records deleted
+     */
+    @Modifying
+    @Query("DELETE FROM BookingLock bl WHERE bl.status = com.kdu.rizzlers.entity.BookingLock.BookingLockStatus.RELEASED")
+    int deleteReleasedStatusLocks();
+    
+    /**
      * Find all expired locks with PENDING or CONFIRMED status
      * 
      * @param currentTime the current time

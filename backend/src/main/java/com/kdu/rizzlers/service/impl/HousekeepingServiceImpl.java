@@ -347,7 +347,7 @@ public class HousekeepingServiceImpl implements HousekeepingService {
      * Scheduled method that runs daily to generate and assign tasks based on room bookings.
      * This creates cleaning tasks for all properties and automatically assigns them to available staff.
      */
-    @Scheduled(cron = "0 14 18 * * *") // Run at 6:00 AM every day
+    @Scheduled(cron = "0 0 6 * * *") // Run at 6:00 AM every day
     @Transactional
     public void generateAndAssignDailyTasks() {
         log.info("Starting daily task generation and assignment for all properties...");

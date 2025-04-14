@@ -575,33 +575,30 @@ public class BookingServiceImpl implements BookingService {
             // First, find all expired locks
             List<BookingLock> expiredLocks = bookingLockRepository.findExpiredLocks(now);
             if (expiredLocks.isEmpty()) {
-                return 0;
+                log.info("No newly expired locks found");
+            } else {
+                log.info("Found {} expired locks to clean up", expiredLocks.size());
             }
             
-            log.info("Found {} expired locks to clean up", expiredLocks.size());
-            int successCount = 0;
+            // Delete expired locks directly using repository method
+            int deletedCount = bookingLockRepository.deleteExpiredLocks(now);
             
-            // Process each expired lock individually to handle optimistic locking
-            for (BookingLock lock : expiredLocks) {
-                try {
-                    // Update the status to EXPIRED instead of deleting to keep history
-                    lock.setStatus(BookingLock.BookingLockStatus.EXPIRED);
-                    lock.setStatusUpdatedAt(now);
-                    bookingLockRepository.save(lock);
-                    successCount++;
-                } catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
-                    log.info("Optimistic lock failure when updating expired lock {}: {}", 
-                            lock.getId(), e.getMessage());
-                    // This is expected in concurrent scenarios, so we don't count it as an error
-                } catch (Exception e) {
-                    log.error("Error updating expired lock {}: {}", lock.getId(), e.getMessage());
-                }
+            // Also delete any locks that were previously marked as EXPIRED but not deleted
+            int oldExpiredCount = bookingLockRepository.deleteExpiredStatusLocks();
+            
+            // Also delete any locks with RELEASED status
+            int releasedCount = bookingLockRepository.deleteReleasedStatusLocks();
+            
+            int totalDeleted = deletedCount + oldExpiredCount + releasedCount;
+            
+            if (totalDeleted > 0) {
+                log.info("Successfully deleted {} locks: {} newly expired, {} with EXPIRED status, {} with RELEASED status", 
+                        totalDeleted, deletedCount, oldExpiredCount, releasedCount);
             }
             
-            log.info("Successfully updated {} expired locks", successCount);
-            return successCount;
+            return totalDeleted;
         } catch (Exception e) {
-            log.error("Error cleaning up expired locks: {}", e.getMessage(), e);
+            log.error("Error cleaning up locks: {}", e.getMessage(), e);
             return 0;
         }
     }
