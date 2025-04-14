@@ -76,7 +76,9 @@ public class ReviewInvitationServiceImpl implements ReviewInvitationService {
     @Transactional
     public void scheduledSendReviewInvitations() {
         log.info("Starting scheduled review invitation process");
-        LocalDate today = LocalDate.now();
+        // Use ZonedDateTime with Asia/Kolkata timezone
+        LocalDate today = ZonedDateTime.now(java.time.ZoneId.of("Asia/Kolkata")).toLocalDate();
+        log.info("Sending review invitations for checkout date: {}", today);
         int sent = sendReviewInvitationsForCheckoutDate(today);
         log.info("Completed scheduled review invitation process. Sent {} invitations", sent);
     }
