@@ -13,6 +13,13 @@ import com.kdu.rizzlers.entity.StaffSkillLevel;
 import com.kdu.rizzlers.repository.HousekeepingStaffRepository;
 import com.kdu.rizzlers.service.HousekeepingService;
 import com.kdu.rizzlers.service.HousekeepingUserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.hibernate.Hibernate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -33,6 +40,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/housekeeping/admin")
 @Slf4j
+@Tag(name = "Admin", description = "APIs for admin-only housekeeping operations")
 public class AdminController {
 
     private final HousekeepingService housekeepingService;
@@ -52,6 +60,12 @@ public class AdminController {
      * Create a new user
      */
     @PostMapping("/users")
+    @Operation(summary = "Create new user", description = "Creates a new user with specified role and optional staff association")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "201", description = "User created successfully",
+                content = @Content(schema = @Schema(implementation = UserResponseDTO.class))),
+        @ApiResponse(responseCode = "400", description = "Invalid input data")
+    })
     public ResponseEntity<UserResponseDTO> createUser(@Valid @RequestBody UserCreateRequestDTO request) {
         HousekeepingUser user = userService.createUser(
                 request.getUsername(),
@@ -67,6 +81,9 @@ public class AdminController {
      * Get all users
      */
     @GetMapping("/users")
+    @Operation(summary = "Get all users", description = "Retrieves a list of all users in the system")
+    @ApiResponse(responseCode = "200", description = "Successfully retrieved users list",
+                content = @Content(schema = @Schema(implementation = UserResponseDTO.class)))
     public ResponseEntity<List<UserResponseDTO>> getAllUsers() {
         List<UserResponseDTO> users = userService.getAllUsers().stream()
                 .map(this::mapToUserResponseDTO)
@@ -79,8 +96,13 @@ public class AdminController {
      * Update user role
      */
     @PutMapping("/users/{userId}/role")
+    @Operation(summary = "Update user role", description = "Updates the role of a specific user")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Role updated successfully"),
+        @ApiResponse(responseCode = "404", description = "User not found")
+    })
     public ResponseEntity<UserResponseDTO> updateUserRole(
-            @PathVariable Integer userId,
+            @Parameter(description = "ID of the user to update") @PathVariable Integer userId,
             @Valid @RequestBody RoleUpdateRequestDTO request) {
         
         HousekeepingUser user = userService.updateUserRole(userId, request.getRole());
@@ -91,7 +113,13 @@ public class AdminController {
      * Delete a user
      */
     @DeleteMapping("/users/{userId}")
-    public ResponseEntity<Void> deleteUser(@PathVariable Integer userId) {
+    @Operation(summary = "Delete user", description = "Deletes a user from the system")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "204", description = "User deleted successfully"),
+        @ApiResponse(responseCode = "404", description = "User not found")
+    })
+    public ResponseEntity<Void> deleteUser(
+            @Parameter(description = "ID of the user to delete") @PathVariable Integer userId) {
         userService.deleteUser(userId);
         return ResponseEntity.noContent().build();
     }
@@ -100,6 +128,12 @@ public class AdminController {
      * Create a new staff member
      */
     @PostMapping("/staff")
+    @Operation(summary = "Create staff member", description = "Creates a new housekeeping staff member")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "201", description = "Staff member created successfully"),
+        @ApiResponse(responseCode = "400", description = "Invalid input data"),
+        @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
     public ResponseEntity<?> createStaffMember(@Valid @RequestBody HousekeepingStaff staff) {
         try {
             // Validation
@@ -157,7 +191,13 @@ public class AdminController {
      * Get all staff by property
      */
     @GetMapping("/staff/property/{propertyId}")
-    public ResponseEntity<?> getStaffByProperty(@PathVariable Integer propertyId) {
+    @Operation(summary = "Get staff by property", description = "Retrieves all staff members assigned to a specific property")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Successfully retrieved staff list"),
+        @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<?> getStaffByProperty(
+            @Parameter(description = "ID of the property") @PathVariable Integer propertyId) {
         try {
             log.info("Fetching staff for property ID: {}", propertyId);
             List<HousekeepingStaff> staffList = housekeepingService.getStaffByProperty(propertyId);
@@ -194,6 +234,11 @@ public class AdminController {
      * Create a new shift
      */
     @PostMapping("/shifts")
+    @Operation(summary = "Create shift", description = "Creates a new work shift")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "201", description = "Shift created successfully"),
+        @ApiResponse(responseCode = "400", description = "Invalid input data")
+    })
     public ResponseEntity<Shift> createShift(@Valid @RequestBody Shift shift) {
         Shift createdShift = housekeepingService.createShift(shift);
         return ResponseEntity.status(HttpStatus.CREATED).body(createdShift);
@@ -203,47 +248,34 @@ public class AdminController {
      * Get all shifts by property
      */
     @GetMapping("/shifts/property/{propertyId}")
-    public ResponseEntity<List<Shift>> getShiftsByProperty(@PathVariable Integer propertyId) {
+    @Operation(summary = "Get shifts by property", description = "Retrieves all shifts associated with a specific property")
+    @ApiResponse(responseCode = "200", description = "Successfully retrieved shifts")
+    public ResponseEntity<List<Shift>> getShiftsByProperty(
+            @Parameter(description = "ID of the property") @PathVariable Integer propertyId) {
         List<Shift> shifts = housekeepingService.getShiftsByProperty(propertyId);
         return ResponseEntity.ok(shifts);
-    }
-
-    /**
-     * Create a new task type
-     */
-    @PostMapping("/task-types")
-    public ResponseEntity<CleanTaskType> createTaskType(@Valid @RequestBody CleanTaskType taskType) {
-        CleanTaskType createdTaskType = housekeepingService.createTaskType(taskType);
-        return ResponseEntity.status(HttpStatus.CREATED).body(createdTaskType);
     }
 
     /**
      * Get all task types
      */
     @GetMapping("/task-types")
+    @Operation(summary = "Get all task types", description = "Retrieves all available cleaning task types")
+    @ApiResponse(responseCode = "200", description = "Successfully retrieved task types")
     public ResponseEntity<List<CleanTaskType>> getAllTaskTypes() {
         List<CleanTaskType> taskTypes = housekeepingService.getAllTaskTypes();
         return ResponseEntity.ok(taskTypes);
     }
 
     /**
-     * Save property preferences
-     */
-    @PostMapping("/property-preferences")
-    public ResponseEntity<PropertyPreferences> savePropertyPreferences(
-            @Valid @RequestBody PropertyPreferences preferences) {
-        
-        PropertyPreferences savedPreferences = housekeepingService.savePropertyPreferences(preferences);
-        return ResponseEntity.status(HttpStatus.CREATED).body(savedPreferences);
-    }
-
-    /**
      * Generate and assign tasks for a property and date
      */
     @PostMapping("/tasks/generate")
+    @Operation(summary = "Generate tasks", description = "Generates and assigns cleaning tasks for a property on a specific date")
+    @ApiResponse(responseCode = "200", description = "Tasks generated successfully")
     public ResponseEntity<List<String>> generateTasks(
-            @RequestParam Integer propertyId,
-            @RequestParam(required = false) LocalDate date) {
+            @Parameter(description = "ID of the property") @RequestParam Integer propertyId,
+            @Parameter(description = "Date to generate tasks for (default: current date)") @RequestParam(required = false) LocalDate date) {
         
         LocalDate taskDate = date != null ? date : LocalDate.now();
         housekeepingService.generateAndAssignTasks(propertyId, taskDate);
@@ -255,9 +287,14 @@ public class AdminController {
      * Get all staff absences for a property and date
      */
     @GetMapping("/absences")
+    @Operation(summary = "Get absences by property and date", description = "Retrieves all staff absences for a specific property on a specific date")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Successfully retrieved absences"),
+        @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
     public ResponseEntity<?> getAbsencesForPropertyAndDate(
-            @RequestParam Integer propertyId,
-            @RequestParam(required = false) LocalDate date) {
+            @Parameter(description = "ID of the property") @RequestParam Integer propertyId,
+            @Parameter(description = "Date to retrieve absences for (default: current date)") @RequestParam(required = false) LocalDate date) {
         try {
             LocalDate absenceDate = date != null ? date : LocalDate.now();
             List<StaffAbsence> absences = housekeepingService.getAbsencesForPropertyAndDate(propertyId, absenceDate);
