@@ -194,6 +194,28 @@
 			<artifactId>nimbus-jose-jwt</artifactId>
 			<version>9.31</version>
 		</dependency>
+		
+		<!-- AWS X-Ray SDK for Spring -->
+		<dependency>
+			<groupId>com.amazonaws</groupId>
+			<artifactId>aws-xray-recorder-sdk-spring</artifactId>
+			<version>2.14.0</version>
+		</dependency>
+		<dependency>
+			<groupId>com.amazonaws</groupId>
+			<artifactId>aws-xray-recorder-sdk-jdbc</artifactId>
+			<version>2.14.0</version>
+		</dependency>
+		<dependency>
+			<groupId>com.amazonaws</groupId>
+			<artifactId>aws-xray-recorder-sdk-aws-sdk</artifactId>
+			<version>2.14.0</version>
+		</dependency>
+		<dependency>
+			<groupId>com.amazonaws</groupId>
+			<artifactId>aws-xray-recorder-sdk-aws-sdk-instrumentor</artifactId>
+			<version>2.14.0</version>
+		</dependency>
 	
 	</dependencies>
 
