@@ -11,8 +11,8 @@ import com.amazonaws.xray.AWSXRayRecorderBuilder;
 import com.amazonaws.xray.jakarta.servlet.AWSXRayServletFilter;
 import com.amazonaws.xray.plugins.ECSPlugin;
 import com.amazonaws.xray.plugins.EC2Plugin;
-import com.amazonaws.xray.strategy.sampling.LocalizedSamplingStrategy;
 import com.amazonaws.xray.strategy.LogErrorContextMissingStrategy;
+import com.amazonaws.xray.strategy.sampling.NoSamplingStrategy;
 import com.amazonaws.xray.entities.Segment;
 import com.amazonaws.xray.entities.Subsegment;
 import com.amazonaws.xray.sql.postgres.TracingInterceptor;
@@ -25,8 +25,7 @@ public class XRayConfig {
                 .withPlugin(new ECSPlugin())
                 .withPlugin(new EC2Plugin())
                 .withContextMissingStrategy(new LogErrorContextMissingStrategy())
-                .withSamplingStrategy(new LocalizedSamplingStrategy(
-                        XRayConfig.class.getClassLoader().getResource("sampling-rules.json")));
+                .withSamplingStrategy(new NoSamplingStrategy());
         
         AWSXRay.setGlobalRecorder(builder.build());
     }
