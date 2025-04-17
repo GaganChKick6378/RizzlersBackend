@@ -63,6 +63,29 @@ resource "aws_iam_role" "ecs_task_role" {
   tags = var.tags
 }
 
+# Add X-Ray permissions to Task Role
+resource "aws_iam_role_policy" "ecs_task_xray" {
+  name   = "${var.name_prefix}-task-xray-policy"
+  role   = aws_iam_role.ecs_task_role.id
+  
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "xray:PutTraceSegments",
+          "xray:PutTelemetryRecords",
+          "xray:GetSamplingRules",
+          "xray:GetSamplingTargets",
+          "xray:GetSamplingStatisticSummaries"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # Task Definition
 resource "aws_ecs_task_definition" "app_task" {
   family                   = "${var.name_prefix}-task"
@@ -171,6 +194,10 @@ resource "aws_ecs_task_definition" "app_task" {
         {
           name  = "JWT_EXPIRATION"
           value = var.jwt_expiration
+        },
+        {
+          name  = "AWS_XRAY_DAEMON_ADDRESS"
+          value = "xray-daemon:2000"
         }
       ]
       
@@ -189,6 +216,28 @@ resource "aws_ecs_task_definition" "app_task" {
         timeout     = 30
         retries     = 10
         startPeriod = 300
+      }
+    },
+    {
+      name       = "xray-daemon"
+      image      = "amazon/aws-xray-daemon:latest"
+      essential  = true
+      
+      portMappings = [
+        {
+          containerPort = 2000
+          hostPort      = 2000
+          protocol      = "udp"
+        }
+      ]
+      
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.ecs_logs.name
+          "awslogs-region"        = "ap-south-1"
+          "awslogs-stream-prefix" = "xray"
+        }
       }
     }
   ])
