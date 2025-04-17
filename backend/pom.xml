@@ -195,31 +195,43 @@
 			<version>9.31</version>
 		</dependency>
 		
-		<!-- AWS X-Ray SDK for Spring -->
+		<!-- AWS X-Ray SDK dependencies -->
 		<dependency>
 			<groupId>com.amazonaws</groupId>
 			<artifactId>aws-xray-recorder-sdk-core</artifactId>
-			<version>2.14.0</version>
+			<version>2.15.0</version>
 		</dependency>
 		<dependency>
 			<groupId>com.amazonaws</groupId>
 			<artifactId>aws-xray-recorder-sdk-spring</artifactId>
-			<version>2.14.0</version>
-		</dependency>
-		<dependency>
-			<groupId>com.amazonaws</groupId>
-			<artifactId>aws-xray-recorder-sdk-sql-postgres</artifactId>
-			<version>2.14.0</version>
+			<version>2.15.0</version>
 		</dependency>
 		<dependency>
 			<groupId>com.amazonaws</groupId>
 			<artifactId>aws-xray-recorder-sdk-aws-sdk</artifactId>
-			<version>2.14.0</version>
+			<version>2.15.0</version>
 		</dependency>
 		<dependency>
 			<groupId>com.amazonaws</groupId>
-			<artifactId>aws-xray-recorder-sdk-aws-sdk-instrumentor</artifactId>
-			<version>2.14.0</version>
+			<artifactId>aws-xray-recorder-sdk-aws-sdk-v2</artifactId>
+			<version>2.15.0</version>
+		</dependency>
+		<dependency>
+			<groupId>com.amazonaws</groupId>
+			<artifactId>aws-xray-recorder-sdk-sql-postgres</artifactId>
+			<version>2.15.0</version>
+		</dependency>
+		
+		<!-- Tomcat JDBC Connection Pool - required for AWS X-Ray PostgreSQL interceptor -->
+		<dependency>
+			<groupId>org.apache.tomcat</groupId>
+			<artifactId>tomcat-jdbc</artifactId>
+		</dependency>
+		
+		<!-- Spring AOP for AspectJ -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-aop</artifactId>
 		</dependency>
 	
 	</dependencies>

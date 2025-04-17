@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.kdu.rizzlers.config.XRayTraced;
 
 import java.util.List;
 import java.util.Optional;
@@ -73,6 +74,7 @@ public class HousekeepingUserServiceImpl implements HousekeepingUserService {
     }
 
     @Override
+    @XRayTraced
     public Optional<HousekeepingUser> getUserByUsername(String username) {
         return userRepository.findByUsername(username);
     }
