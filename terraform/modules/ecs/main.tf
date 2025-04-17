@@ -63,27 +63,10 @@ resource "aws_iam_role" "ecs_task_role" {
   tags = var.tags
 }
 
-# Add X-Ray permissions to Task Role
-resource "aws_iam_role_policy" "ecs_task_xray" {
-  name   = "${var.name_prefix}-task-xray-policy"
-  role   = aws_iam_role.ecs_task_role.id
-  
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "xray:PutTraceSegments",
-          "xray:PutTelemetryRecords",
-          "xray:GetSamplingRules",
-          "xray:GetSamplingTargets",
-          "xray:GetSamplingStatisticSummaries"
-        ]
-        Resource = "*"
-      }
-    ]
-  })
+# Attach X-Ray permissions to the task role
+resource "aws_iam_role_policy_attachment" "ecs_task_role_xray" {
+  role       = aws_iam_role.ecs_task_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess"
 }
 
 # Task Definition
@@ -194,10 +177,6 @@ resource "aws_ecs_task_definition" "app_task" {
         {
           name  = "JWT_EXPIRATION"
           value = var.jwt_expiration
-        },
-        {
-          name  = "AWS_XRAY_DAEMON_ADDRESS"
-          value = "xray-daemon:2000"
         }
       ]
       
@@ -219,9 +198,9 @@ resource "aws_ecs_task_definition" "app_task" {
       }
     },
     {
-      name       = "xray-daemon"
-      image      = "amazon/aws-xray-daemon:latest"
-      essential  = true
+      name      = "xray-daemon"
+      image     = "amazon/aws-xray-daemon:latest"
+      essential = true
       
       portMappings = [
         {

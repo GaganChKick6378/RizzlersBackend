@@ -2,28 +2,20 @@ package com.kdu.rizzlers;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.web.servlet.ServletRegistrationBean;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.ComponentScan;
 import org.springframework.web.servlet.DispatcherServlet;
 import org.springframework.scheduling.annotation.EnableScheduling;
-import org.springframework.context.annotation.EnableAspectJAutoProxy;
+import com.amazonaws.xray.spring.aop.XRayEnabled;
 
 @SpringBootApplication
-@EntityScan(basePackages = "com.kdu.rizzlers.entity")
 @EnableScheduling
-@EnableAspectJAutoProxy
+@XRayEnabled
 public class RizzlersApplication {
 
     public static void main(String[] args) {
         // Set system property to ensure health checks work for AWS load balancer
         System.setProperty("server.tomcat.accesslog.enabled", "true");
-        
-        // Enable AWS X-Ray
-        System.setProperty("com.amazonaws.xray.strategy.tracingName", "rizzlers-backend");
-        System.setProperty("com.amazonaws.xray.emitters.daemonAddress", "xray-daemon:2000");
-        
         SpringApplication.run(RizzlersApplication.class, args);
     }
     
