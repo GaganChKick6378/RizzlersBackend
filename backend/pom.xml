@@ -198,12 +198,17 @@
 		<!-- AWS X-Ray SDK for Spring -->
 		<dependency>
 			<groupId>com.amazonaws</groupId>
+			<artifactId>aws-xray-recorder-sdk-core</artifactId>
+			<version>2.14.0</version>
+		</dependency>
+		<dependency>
+			<groupId>com.amazonaws</groupId>
 			<artifactId>aws-xray-recorder-sdk-spring</artifactId>
 			<version>2.14.0</version>
 		</dependency>
 		<dependency>
 			<groupId>com.amazonaws</groupId>
-			<artifactId>aws-xray-recorder-sdk-jdbc</artifactId>
+			<artifactId>aws-xray-recorder-sdk-sql-postgres</artifactId>
 			<version>2.14.0</version>
 		</dependency>
 		<dependency>
