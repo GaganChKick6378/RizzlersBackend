@@ -21,7 +21,6 @@ import java.util.NoSuchElementException;
 /**
  * Global exception handler to provide consistent error responses across the API
  */
-@RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
 

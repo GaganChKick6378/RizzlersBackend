@@ -1,5 +1,6 @@
 package com.kdu.rizzlers.controller;
 
+import com.kdu.rizzlers.cache.CacheService;
 import com.kdu.rizzlers.dto.PropertyConfigurationDTO;
 import com.kdu.rizzlers.service.PropertyConfigurationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -11,8 +12,11 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @RestController
@@ -22,6 +26,8 @@ import org.springframework.web.bind.annotation.*;
 public class PropertyConfigurationController {
 
     private final PropertyConfigurationService propertyConfigurationService;
+    @Autowired
+    private CacheService cacheService;
 
     @GetMapping("/{id}")
     @Operation(summary = "Get property configuration by ID", 
@@ -35,7 +41,13 @@ public class PropertyConfigurationController {
             @Parameter(description = "Configuration ID", required = true) 
             @PathVariable Long id) {
         log.info("REST request to get property configuration with ID: {}", id);
+        String cacheKey = "property-config:id:" + id;
+        PropertyConfigurationDTO.Response cached = cacheService.get(cacheKey, PropertyConfigurationDTO.Response.class);
+        if (cached != null) {
+            return ResponseEntity.ok(cached);
+        }
         PropertyConfigurationDTO.Response response = propertyConfigurationService.getPropertyConfigurationById(id);
+        cacheService.set(cacheKey, response, 10, TimeUnit.MINUTES);
         return ResponseEntity.ok(response);
     }
     
@@ -51,7 +63,13 @@ public class PropertyConfigurationController {
             @Parameter(description = "Property ID", required = true)
             @PathVariable Integer propertyId) {
         log.info("REST request to get property configuration for property ID: {}", propertyId);
+        String cacheKey = "property-config:propertyId:" + propertyId;
+        PropertyConfigurationDTO.Response cached = cacheService.get(cacheKey, PropertyConfigurationDTO.Response.class);
+        if (cached != null) {
+            return ResponseEntity.ok(cached);
+        }
         PropertyConfigurationDTO.Response response = propertyConfigurationService.getPropertyConfigurationByPropertyId(propertyId);
+        cacheService.set(cacheKey, response, 10, TimeUnit.MINUTES);
         return ResponseEntity.ok(response);
     }
 } 

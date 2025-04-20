@@ -5,6 +5,7 @@ import com.kdu.rizzlers.dto.out.CheckoutPageConfigResponse;
 import com.kdu.rizzlers.dto.out.LandingPageConfigResponse;
 import com.kdu.rizzlers.dto.out.ResultsPageConfigResponse;
 import com.kdu.rizzlers.dto.out.TenantConfigurationResponse;
+import com.kdu.rizzlers.cache.CacheService;
 import com.kdu.rizzlers.service.TenantConfigurationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/tenant-configurations")
@@ -35,6 +37,9 @@ public class TenantConfigurationController {
     @Autowired
     private TenantConfigurationService tenantConfigurationService;
 
+    @Autowired
+    private CacheService cacheService;
+
     @PostMapping
     @Operation(summary = "Create configuration", description = "Creates a new tenant configuration")
     @ApiResponses(value = {
@@ -44,7 +49,14 @@ public class TenantConfigurationController {
     public ResponseEntity<TenantConfigurationResponse> createConfiguration(
             @Parameter(description = "Tenant configuration request", required = true)
             @Valid @RequestBody TenantConfigurationRequest request) {
-        return new ResponseEntity<>(tenantConfigurationService.createConfiguration(request), HttpStatus.CREATED);
+        String cacheKey = "tenant-config:create";
+        TenantConfigurationResponse cached = cacheService.get(cacheKey, TenantConfigurationResponse.class);
+        if (cached != null) {
+            return ResponseEntity.ok(cached);
+        }
+        TenantConfigurationResponse response = tenantConfigurationService.createConfiguration(request);
+        cacheService.set(cacheKey, response, 10, TimeUnit.MINUTES);
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{id}")
@@ -57,7 +69,14 @@ public class TenantConfigurationController {
     public ResponseEntity<TenantConfigurationResponse> getConfigurationById(
             @Parameter(description = "Configuration ID", required = true)
             @PathVariable Long id) {
-        return ResponseEntity.ok(tenantConfigurationService.getConfigurationById(id));
+        String cacheKey = "tenant-config:id:" + id;
+        TenantConfigurationResponse cached = cacheService.get(cacheKey, TenantConfigurationResponse.class);
+        if (cached != null) {
+            return ResponseEntity.ok(cached);
+        }
+        TenantConfigurationResponse response = tenantConfigurationService.getConfigurationById(id);
+        cacheService.set(cacheKey, response, 10, TimeUnit.MINUTES);
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping
@@ -67,7 +86,14 @@ public class TenantConfigurationController {
                    content = @Content(schema = @Schema(implementation = TenantConfigurationResponse.class)))
     })
     public ResponseEntity<List<TenantConfigurationResponse>> getAllConfigurations() {
-        return ResponseEntity.ok(tenantConfigurationService.getAllConfigurations());
+        String cacheKey = "tenant-config:all";
+        List<TenantConfigurationResponse> cached = cacheService.get(cacheKey, List.class);
+        if (cached != null) {
+            return ResponseEntity.ok(cached);
+        }
+        List<TenantConfigurationResponse> configs = tenantConfigurationService.getAllConfigurations();
+        cacheService.set(cacheKey, configs, 10, TimeUnit.MINUTES);
+        return ResponseEntity.ok(configs);
     }
 
     @GetMapping("/tenant/{tenantId}")
@@ -80,7 +106,14 @@ public class TenantConfigurationController {
     public ResponseEntity<List<TenantConfigurationResponse>> getConfigurationsByTenantId(
             @Parameter(description = "Tenant ID", required = true)
             @PathVariable Integer tenantId) {
-        return ResponseEntity.ok(tenantConfigurationService.getConfigurationsByTenantId(tenantId));
+        String cacheKey = "tenant-config:tenant:" + tenantId;
+        List<TenantConfigurationResponse> cached = cacheService.get(cacheKey, List.class);
+        if (cached != null) {
+            return ResponseEntity.ok(cached);
+        }
+        List<TenantConfigurationResponse> configs = tenantConfigurationService.getConfigurationsByTenantId(tenantId);
+        cacheService.set(cacheKey, configs, 10, TimeUnit.MINUTES);
+        return ResponseEntity.ok(configs);
     }
 
     @GetMapping("/tenant/{tenantId}/page/{page}")
@@ -96,7 +129,14 @@ public class TenantConfigurationController {
             
             @Parameter(description = "Page name", required = true) 
             @PathVariable String page) {
-        return ResponseEntity.ok(tenantConfigurationService.getConfigurationsByTenantIdAndPage(tenantId, page));
+        String cacheKey = "tenant-config:tenant:" + tenantId + ":page:" + page;
+        List<TenantConfigurationResponse> cached = cacheService.get(cacheKey, List.class);
+        if (cached != null) {
+            return ResponseEntity.ok(cached);
+        }
+        List<TenantConfigurationResponse> configs = tenantConfigurationService.getConfigurationsByTenantIdAndPage(tenantId, page);
+        cacheService.set(cacheKey, configs, 10, TimeUnit.MINUTES);
+        return ResponseEntity.ok(configs);
     }
 
     @GetMapping("/tenant/{tenantId}/page/{page}/field/{field}")
@@ -116,7 +156,14 @@ public class TenantConfigurationController {
             
             @Parameter(description = "Field name", required = true) 
             @PathVariable String field) {
-        return ResponseEntity.ok(tenantConfigurationService.getConfigurationByTenantIdAndPageAndField(tenantId, page, field));
+        String cacheKey = "tenant-config:tenant:" + tenantId + ":page:" + page + ":field:" + field;
+        TenantConfigurationResponse cached = cacheService.get(cacheKey, TenantConfigurationResponse.class);
+        if (cached != null) {
+            return ResponseEntity.ok(cached);
+        }
+        TenantConfigurationResponse config = tenantConfigurationService.getConfigurationByTenantIdAndPageAndField(tenantId, page, field);
+        cacheService.set(cacheKey, config, 10, TimeUnit.MINUTES);
+        return ResponseEntity.ok(config);
     }
     
     @GetMapping("/tenant/{tenantId}/landing")
@@ -129,7 +176,14 @@ public class TenantConfigurationController {
     public ResponseEntity<LandingPageConfigResponse> getLandingPageConfiguration(
             @Parameter(description = "Tenant ID", required = true)
             @PathVariable Integer tenantId) {
-        return ResponseEntity.ok(tenantConfigurationService.getLandingPageConfiguration(tenantId));
+        String cacheKey = "tenant-config:tenant:" + tenantId + ":landing";
+        LandingPageConfigResponse cached = cacheService.get(cacheKey, LandingPageConfigResponse.class);
+        if (cached != null) {
+            return ResponseEntity.ok(cached);
+        }
+        LandingPageConfigResponse config = tenantConfigurationService.getLandingPageConfiguration(tenantId);
+        cacheService.set(cacheKey, config, 10, TimeUnit.MINUTES);
+        return ResponseEntity.ok(config);
     }
 
     @GetMapping("/tenant/{tenantId}/landing/basic")
@@ -145,8 +199,13 @@ public class TenantConfigurationController {
             
             @Parameter(description = "Whether to fetch property details", example = "false")
             @RequestParam(value = "fetch_property_details", defaultValue = "false") boolean fetchPropertyDetails) {
-        
+        String cacheKey = "tenant-config:tenant:" + tenantId + ":landing:basic:" + fetchPropertyDetails;
+        LandingPageConfigResponse cached = cacheService.get(cacheKey, LandingPageConfigResponse.class);
+        if (cached != null) {
+            return ResponseEntity.ok(cached);
+        }
         LandingPageConfigResponse config = tenantConfigurationService.getLandingPageConfiguration(tenantId, fetchPropertyDetails);
+        cacheService.set(cacheKey, config, 10, TimeUnit.MINUTES);
         return ResponseEntity.ok(config);
     }
 
@@ -159,6 +218,11 @@ public class TenantConfigurationController {
     public ResponseEntity<Map<String, Object>> getResultsPageConfiguration(
             @Parameter(description = "Tenant ID", required = true)
             @PathVariable Integer tenantId) {
+        String cacheKey = "tenant-config:tenant:" + tenantId + ":results";
+        Map<String, Object> cached = cacheService.get(cacheKey, Map.class);
+        if (cached != null) {
+            return ResponseEntity.ok(cached);
+        }
         ResultsPageConfigResponse fullConfig = tenantConfigurationService.getResultsPageConfiguration(tenantId);
         
         // Add logging to see what's coming from the service
@@ -201,6 +265,7 @@ public class TenantConfigurationController {
         log.info("Tenant {} results page final response - filters enabled: {}", tenantId, 
                  configOnly.get("filters") instanceof Map ? ((Map<String, Object>)configOnly.get("filters")).get("enabled") : "not a map");
         
+        cacheService.set(cacheKey, configOnly, 10, TimeUnit.MINUTES);
         return ResponseEntity.ok(configOnly);
     }
 
@@ -217,6 +282,11 @@ public class TenantConfigurationController {
             @Parameter(description = "Whether to fetch property details", example = "false")
             @RequestParam(value = "fetch_property_details", defaultValue = "false") boolean fetchPropertyDetails) {
         
+        String cacheKey = "tenant-config:tenant:" + tenantId + ":results:basic:" + fetchPropertyDetails;
+        Map<String, Object> cached = cacheService.get(cacheKey, Map.class);
+        if (cached != null) {
+            return ResponseEntity.ok(cached);
+        }
         ResultsPageConfigResponse fullConfig = tenantConfigurationService.getResultsPageConfiguration(tenantId, fetchPropertyDetails);
         
         // Add logging
@@ -252,6 +322,7 @@ public class TenantConfigurationController {
         log.info("Basic endpoint: Tenant {} results page final response - filters enabled: {}", tenantId, 
                  configOnly.get("filters") instanceof Map ? ((Map<String, Object>)configOnly.get("filters")).get("enabled") : "not a map");
         
+        cacheService.set(cacheKey, configOnly, 10, TimeUnit.MINUTES);
         return ResponseEntity.ok(configOnly);
     }
 
@@ -268,7 +339,14 @@ public class TenantConfigurationController {
             
             @Parameter(description = "Updated configuration request", required = true)
             @Valid @RequestBody TenantConfigurationRequest request) {
-        return ResponseEntity.ok(tenantConfigurationService.updateConfiguration(id, request));
+        String cacheKey = "tenant-config:update:" + id;
+        TenantConfigurationResponse cached = cacheService.get(cacheKey, TenantConfigurationResponse.class);
+        if (cached != null) {
+            return ResponseEntity.ok(cached);
+        }
+        TenantConfigurationResponse response = tenantConfigurationService.updateConfiguration(id, request);
+        cacheService.set(cacheKey, response, 10, TimeUnit.MINUTES);
+        return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/{id}")
@@ -280,6 +358,8 @@ public class TenantConfigurationController {
     public ResponseEntity<Void> deleteConfiguration(
             @Parameter(description = "Configuration ID", required = true)
             @PathVariable Long id) {
+        String cacheKey = "tenant-config:delete:" + id;
+        cacheService.delete(cacheKey);
         tenantConfigurationService.deleteConfiguration(id);
         return ResponseEntity.noContent().build();
     }
@@ -294,8 +374,13 @@ public class TenantConfigurationController {
     public ResponseEntity<CheckoutPageConfigResponse> getCheckoutPageConfiguration(
             @Parameter(description = "Tenant ID", required = true)
             @PathVariable Integer tenantId) {
-        log.info("REST request to get checkout page configuration for tenant: {}", tenantId);
+        String cacheKey = "tenant-config:tenant:" + tenantId + ":checkout";
+        CheckoutPageConfigResponse cached = cacheService.get(cacheKey, CheckoutPageConfigResponse.class);
+        if (cached != null) {
+            return ResponseEntity.ok(cached);
+        }
         CheckoutPageConfigResponse config = tenantConfigurationService.getCheckoutPageConfiguration(tenantId);
+        cacheService.set(cacheKey, config, 10, TimeUnit.MINUTES);
         return ResponseEntity.ok(config);
     }
 } 

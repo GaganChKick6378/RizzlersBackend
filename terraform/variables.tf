@@ -87,6 +87,23 @@ variable "frontend_review_url" {
   type        = string
 }
 
+variable "cache_redis_host" {
+  description = "Redis/Valkey host"
+  type        = string
+}
+
+variable "cache_redis_port" {
+  description = "Redis/Valkey port"
+  type        = string
+  default     = "6379"
+}
+
+variable "cache_redis_ssl" {
+  description = "Enable SSL for Redis/Valkey"
+  type        = string
+  default     = "true"
+}
+
 # AWS Cognito Configuration
 variable "aws_cognito_region" {
   description = "AWS Cognito region"

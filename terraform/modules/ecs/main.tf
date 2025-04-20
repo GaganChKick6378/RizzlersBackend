@@ -177,7 +177,19 @@ resource "aws_ecs_task_definition" "app_task" {
         {
           name  = "JWT_EXPIRATION"
           value = var.jwt_expiration
-        }
+        },
+        {
+          name  = "CACHE_REDIS_HOST"
+          value = var.cache_redis_host
+        },
+        {
+          name  = "CACHE_REDIS_PORT"
+          value = var.cache_redis_port
+        },
+        {
+          name  = "CACHE_REDIS_SSL"
+          value = var.cache_redis_ssl
+        },
       ]
       
       logConfiguration = {

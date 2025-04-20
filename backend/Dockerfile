@@ -31,6 +31,9 @@ ARG aws_cognito_jwk_url
 # JWT Configuration
 ARG jwt_secret
 ARG jwt_expiration
+ARG cache_redis_host
+ARG cache_redis_port
+ARG cache_redis_ssl
 
 # Set environment variables for Maven build
 ENV DATABASE_URL=$database_url \
@@ -45,6 +48,9 @@ ENV DATABASE_URL=$database_url \
     ENCRYPTION_SECRET_KEY=$encryption_secret_key \
     EMAIL_APP_PASSWORD=$email_app_password \
     FRONTEND_REVIEW_URL=$frontend_review_url \
+    CACHE_REDIS_HOST=$cache_redis_host \
+    CACHE_REDIS_PORT=$cache_redis_port \
+    CACHE_REDIS_SSL=$cache_redis_ssl \
     # AWS Cognito Environment variables
     AWS_COGNITO_REGION=$aws_cognito_region \
     AWS_COGNITO_USER_POOL_ID=$aws_cognito_user_pool_id \
@@ -79,6 +85,9 @@ ENV DATABASE_URL=$database_url \
     ENCRYPTION_SECRET_KEY=$encryption_secret_key \
     EMAIL_APP_PASSWORD=$email_app_password \
     FRONTEND_REVIEW_URL=$frontend_review_url \
+    CACHE_REDIS_HOST=$cache_redis_host \
+    CACHE_REDIS_PORT=$cache_redis_port \
+    CACHE_REDIS_SSL=$cache_redis_ssl \
     # AWS Cognito Environment variables
     AWS_COGNITO_REGION=$aws_cognito_region \
     AWS_COGNITO_USER_POOL_ID=$aws_cognito_user_pool_id \
