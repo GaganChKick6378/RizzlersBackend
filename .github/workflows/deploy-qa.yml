@@ -83,6 +83,11 @@ jobs:
           jwt_secret = "${{ secrets.JWT_SECRET }}"
           jwt_expiration = "${{ secrets.JWT_EXPIRATION }}"
 
+          # Redis/Valkey configuration
+          cache_redis_host = "${{ secrets.CACHE_REDIS_HOST_QA }}"
+          cache_redis_port = "6379"
+          cache_redis_ssl = "true"
+
           # Security and Email configuration
           encryption_secret_key = "${{ secrets.ENCRYPTION_SECRET_KEY }}"
           email_app_password = "${{ secrets.EMAIL_APP_PASSWORD }}"
@@ -198,6 +203,9 @@ jobs:
             --build-arg encryption_secret_key="${{ secrets.ENCRYPTION_SECRET_KEY }}" \
             --build-arg email_app_password="${{ secrets.EMAIL_APP_PASSWORD }}" \
             --build-arg frontend_review_url="${{ secrets.FRONTEND_REVIEW_URL_QA }}" \
+            --build-arg cache_redis_host="${{ secrets.CACHE_REDIS_HOST_QA }}" \
+            --build-arg cache_redis_port="6379" \
+            --build-arg cache_redis_ssl="true" \
             .
           docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
           docker tag $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest

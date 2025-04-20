@@ -2,6 +2,7 @@ package com.kdu.rizzlers.controller;
 
 import com.kdu.rizzlers.dto.in.CombinedPromotionRequestDTO;
 import com.kdu.rizzlers.dto.out.PromotionDTO;
+import com.kdu.rizzlers.cache.CacheService;
 import com.kdu.rizzlers.service.PromotionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -12,10 +13,12 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @RestController
@@ -25,6 +28,8 @@ import java.util.List;
 public class PromotionController {
 
     private final PromotionService promotionService;
+    @Autowired
+    private CacheService cacheService;
     
     /**
      * Get all promotions available in the system
@@ -39,7 +44,13 @@ public class PromotionController {
     })
     public ResponseEntity<List<PromotionDTO>> getAllPromotions() {
         log.info("Request to get all promotions");
+        String cacheKey = "promotions:all";
+        List<PromotionDTO> cached = cacheService.get(cacheKey, List.class);
+        if (cached != null) {
+            return ResponseEntity.ok(cached);
+        }
         List<PromotionDTO> promotions = promotionService.getAllPromotions();
+        cacheService.set(cacheKey, promotions, 10, TimeUnit.MINUTES);
         return ResponseEntity.ok(promotions);
     }
     
@@ -91,6 +102,28 @@ public class PromotionController {
         log.info("- Length of stay: {}", request.getLengthOfStay());
         log.info("- Includes weekend: {}", request.includesWeekend());
         
+        String cacheKey = String.format(
+            "promotions:eligible:%s:%s:%s:%s:%d:%d:%d:%s:%s:%s:%d:%b:%b:%b",
+            String.valueOf(request.getPropertyId()),
+            String.valueOf(request.getStartDate()),
+            String.valueOf(request.getEndDate()),
+            String.valueOf(request.getGuests()),
+            request.getAdults(),
+            request.getSeniorCitizens(),
+            request.getKids(),
+            String.valueOf(request.getGuestCount()),
+            String.valueOf(request.getIsMilitaryPersonnel()),
+            String.valueOf(request.getIsKduMember()),
+            request.getLengthOfStay(),
+            request.getIsUpfrontPayment(),
+            request.includesWeekend(),
+            totalGuestCount
+        );
+        List<PromotionDTO> cached = cacheService.get(cacheKey, List.class);
+        if (cached != null) {
+            return ResponseEntity.ok(cached);
+        }
+
         List<PromotionDTO> eligiblePromotions;
         
         if (request.getPropertyId() == null) {
@@ -103,6 +136,7 @@ public class PromotionController {
         
         log.info("Found {} eligible promotions", eligiblePromotions.size());
         
+        cacheService.set(cacheKey, eligiblePromotions, 10, TimeUnit.MINUTES);
         return ResponseEntity.ok(eligiblePromotions);
     }
 } 

@@ -1,5 +1,6 @@
 package com.kdu.rizzlers.controller;
 
+import com.kdu.rizzlers.cache.CacheService;
 import com.kdu.rizzlers.dto.out.DetailsPageConfigResponse;
 import com.kdu.rizzlers.service.TenantConfigurationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Controller for details page configuration endpoints.
@@ -30,6 +32,9 @@ public class DetailsConfigurationController {
 
     @Autowired
     private TenantConfigurationService tenantConfigurationService;
+
+    @Autowired
+    private CacheService cacheService;
 
     /**
      * Get details page configuration for a specific tenant
@@ -48,7 +53,13 @@ public class DetailsConfigurationController {
             @Parameter(description = "Tenant ID", required = true) 
             @PathVariable Integer tenantId) {
         log.info("Request received for details page configuration for tenant: {}", tenantId);
+        String cacheKey = "details-config:tenant:" + tenantId;
+        DetailsPageConfigResponse cached = cacheService.get(cacheKey, DetailsPageConfigResponse.class);
+        if (cached != null) {
+            return ResponseEntity.ok(cached);
+        }
         DetailsPageConfigResponse config = tenantConfigurationService.getDetailsPageConfiguration(tenantId);
+        cacheService.set(cacheKey, config, 10, TimeUnit.MINUTES);
         return ResponseEntity.ok(config);
     }
 
