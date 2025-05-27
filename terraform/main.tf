@@ -76,6 +76,9 @@ module "ecs" {
   aws_cognito_jwk_url = var.aws_cognito_jwk_url
   jwt_secret = var.jwt_secret
   jwt_expiration = var.jwt_expiration
+  cache_redis_host    = var.cache_redis_host
+  cache_redis_port    = var.cache_redis_port
+  cache_redis_ssl     = var.cache_redis_ssl
 }
 
 # Application Load Balancer

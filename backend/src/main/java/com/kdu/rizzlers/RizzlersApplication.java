@@ -2,16 +2,15 @@ package com.kdu.rizzlers;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.web.servlet.ServletRegistrationBean;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.ComponentScan;
 import org.springframework.web.servlet.DispatcherServlet;
 import org.springframework.scheduling.annotation.EnableScheduling;
+import com.amazonaws.xray.spring.aop.XRayEnabled;
 
 @SpringBootApplication
-@EntityScan(basePackages = "com.kdu.rizzlers.entity")
 @EnableScheduling
+@XRayEnabled
 public class RizzlersApplication {
 
     public static void main(String[] args) {
